@@ -4,7 +4,7 @@ import asyncio
 
 from app.runtime.instruments import InstrumentStore
 from app.runtime.settings import EngineConfigStore
-from app.services.engine.controller import EngineController
+from app.services.engine.semi_algo import SemiAlgoController
 
 
 class AppContext:
@@ -12,12 +12,13 @@ class AppContext:
         self._lock = asyncio.Lock()
         self.config_store = EngineConfigStore()
         self.instruments = InstrumentStore()
-        self.engine = EngineController(self.config_store, self.instruments)
-        self.sell_engine = EngineController(self.config_store, self.instruments, kind="SELL")
+        self.engine = SemiAlgoController(self.config_store, self.instruments)
 
     async def startup(self) -> None:
         await self.instruments.load_from_disk_if_present()
 
     async def shutdown(self) -> None:
-        await self.engine.stop()
-        await self.sell_engine.stop()
+        try:
+            await self.engine.stop(force=True)
+        except Exception:
+            pass

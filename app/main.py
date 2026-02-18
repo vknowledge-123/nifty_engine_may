@@ -12,7 +12,7 @@ from app.runtime.context import AppContext
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Nifty Options Ladder Trader", version="0.1.0", default_response_class=ORJSONResponse)
+    app = FastAPI(title="Nifty Semi Algo Options Trader", version="0.1.0", default_response_class=ORJSONResponse)
 
     base_dir = Path(__file__).resolve().parent
     static_dir = base_dir / "web" / "static"

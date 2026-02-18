@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Nifty Ladder Trader</title>
+    <title>Nifty Semi Algo Trader</title>
     <style>
       :root{
         --bg: #0b0d12;
@@ -29,7 +29,7 @@
           radial-gradient(700px 500px at 50% 120%, rgba(255,204,102,0.18), transparent 60%),
           var(--bg);
       }
-      .container{ max-width: 1100px; padding: 22px 18px 80px; margin: 0 auto; }
+      .container{ max-width: 1320px; padding: 22px 18px 80px; margin: 0 auto; }
       header{
         display:flex; align-items:flex-end; justify-content:space-between; gap: 14px;
         padding: 10px 4px 16px;
@@ -45,6 +45,9 @@
         padding: 14px;
         box-shadow: var(--shadow);
       }
+      .card-settings{ grid-column: span 4; }
+      .card-dashboard{ grid-column: span 8; }
+      .card-position{ grid-column: span 12; }
       .card h3{ margin: 0 0 10px; font-size: 14px; letter-spacing: 0.2px; color: rgba(255,255,255,0.88); }
       label{ display:block; font-size: 12px; color: var(--muted); margin-top: 10px; }
       input, select{
@@ -58,6 +61,9 @@
       }
       input::placeholder{ color: rgba(255,255,255,0.40); }
       input:focus, select:focus{ border-color: rgba(124,92,255,0.55); box-shadow: 0 0 0 3px rgba(124,92,255,0.20); }
+      .row2{ display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+      .row3{ display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+      .row4{ display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; }
       .actions{ display:flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; align-items:center; }
       button{
         padding: 10px 12px;
@@ -80,23 +86,14 @@
         background: linear-gradient(90deg, rgba(255,107,107,0.95), rgba(255,107,107,0.55));
         border-color: rgba(255,107,107,0.55);
       }
-      pre{
-        margin: 12px 0 0;
-        background: rgba(0,0,0,0.25);
-        border: 1px solid rgba(255,255,255,0.10);
-        padding: 12px;
-        border-radius: 14px;
-        overflow: auto;
-        min-height: 130px;
+      .btn-good{
+        background: linear-gradient(90deg, rgba(46,229,157,0.95), rgba(46,229,157,0.55));
+        border-color: rgba(46,229,157,0.55);
       }
-      .tablewrap{ margin-top: 10px; overflow:auto; border-radius: 14px; border: 1px solid rgba(255,255,255,0.10); }
-      table{ width:100%; border-collapse: collapse; font-size: 12px; }
-      th, td{ padding: 8px 8px; border-bottom: 1px solid rgba(255,255,255,0.08); text-align: left; vertical-align: top; }
-      th{ position: sticky; top: 0; background: rgba(10,12,18,0.92); backdrop-filter: blur(6px); color: rgba(255,255,255,0.75); font-weight: 600; }
-      tr:hover td{ background: rgba(255,255,255,0.03); }
-      .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-      .good{ color: var(--good); }
-      .bad{ color: var(--bad); }
+      .kvs{ display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+      .kv{ padding: 10px; border: 1px solid rgba(255,255,255,0.10); border-radius: 14px; background: rgba(0,0,0,0.18); }
+      .kv .k{ font-size: 11px; color: var(--muted); }
+      .kv .v{ font-size: 16px; margin-top: 6px; font-weight: 650; }
       .pill{
         display:inline-flex; align-items:center; gap:8px;
         padding: 6px 10px;
@@ -110,563 +107,485 @@
       .dot{ width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
       .dot.good{ background: var(--good); }
       .dot.bad{ background: var(--bad); }
-      .top-right{ display:flex; gap: 8px; align-items:center; flex-wrap: wrap; justify-content:flex-end; }
-      .row2{ display:flex; gap: 12px; flex-wrap: wrap; }
-      .kv{ display:grid; grid-template-columns: 140px 1fr; gap: 6px 10px; margin-top: 8px; font-size: 12px; }
-      .k{ color: var(--muted); }
-      .v{ color: rgba(255,255,255,0.86); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-      .toastwrap{ position: fixed; right: 16px; top: 16px; display:flex; flex-direction:column; gap:10px; z-index: 9999; }
+      .tablewrap{ margin-top: 10px; overflow:auto; border-radius: 14px; border: 1px solid rgba(255,255,255,0.10); -webkit-overflow-scrolling: touch; }
+      table{ width: max-content; min-width: 100%; border-collapse: collapse; font-size: 12px; }
+      th, td{ padding: 8px 8px; border-bottom: 1px solid rgba(255,255,255,0.08); text-align: left; vertical-align: middle; }
+      th{ position: sticky; top: 0; background: rgba(10,12,18,0.92); backdrop-filter: blur(6px); color: rgba(255,255,255,0.75); font-weight: 600; }
+      tr:hover td{ background: rgba(255,255,255,0.03); }
+      .tablewrap button{ padding: 8px 10px; border-radius: 10px; font-size: 12px; width: 76px; white-space: nowrap; }
+      .tablewrap td:nth-child(1), .tablewrap th:nth-child(1){ position: sticky; left: 0; }
+      .tablewrap th:nth-child(1){ background: rgba(10,12,18,0.92); z-index: 3; }
+      .tablewrap td:nth-child(1){ background: rgba(10,12,18,0.72); z-index: 2; }
+      .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .good{ color: var(--good); }
+      .bad{ color: var(--bad); }
+      .muted{ color: var(--muted); }
+      .atm td{ background: rgba(124,92,255,0.10); }
+      .atm td:nth-child(1){ background: rgba(124,92,255,0.16); }
+      .mini{ font-size: 11px; color: var(--muted); }
+      #statusbar{ margin-top: 14px; display:flex; gap: 10px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
+      #statusText{ color: var(--muted); font-size: 12px; }
       .toast{
-        width: min(420px, calc(100vw - 32px));
-        background: rgba(10,12,18,0.88);
-        border: 1px solid rgba(255,255,255,0.14);
-        border-left: 4px solid var(--accent);
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        background: rgba(10,12,18,0.92);
+        border: 1px solid rgba(255,255,255,0.12);
         border-radius: 14px;
+        padding: 12px 12px;
         box-shadow: var(--shadow);
-        padding: 10px 12px;
-        backdrop-filter: blur(10px);
-        color: rgba(255,255,255,0.90);
-        font-size: 13px;
+        max-width: 520px;
+        display:none;
       }
-      .toast.good{ border-left-color: var(--good); }
-      .toast.bad{ border-left-color: var(--bad); }
-      .toast .t{ color: var(--muted); font-size: 12px; margin-top: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-      .small{ font-size: 12px; color: var(--muted); }
-      @media (max-width: 980px){
-        .card{ grid-column: span 12; }
-        .kv{ grid-template-columns: 120px 1fr; }
+      .toast .t{ font-size: 12px; color: rgba(255,255,255,0.88); font-weight: 650; }
+      .toast .m{ margin-top: 6px; font-size: 12px; color: var(--muted); white-space: pre-wrap; }
+
+      /* Layout tweaks for narrow screens */
+      @media (max-width: 1100px){
+        header{ flex-direction: column; align-items: flex-start; }
+        .card-settings, .card-dashboard, .card-position{ grid-column: span 12; }
+        .kvs{ grid-template-columns: 1fr; }
+        .row2, .row3, .row4{ grid-template-columns: 1fr; }
+        .tablewrap{ position: relative; }
+        .tablewrap::after{
+          content: "";
+          position: absolute;
+          right: 0;
+          top: 0;
+          height: 100%;
+          width: 28px;
+          pointer-events: none;
+          background: linear-gradient(to left, rgba(11,13,18,0.95), rgba(11,13,18,0.0));
+        }
+      }
+
+      /* Keep settings readable when shown alongside the dashboard */
+      @media (min-width: 1101px){
+        .card-settings .row3{ grid-template-columns: 1fr 1fr; }
+        .card-settings .row4{ grid-template-columns: 1fr 1fr; }
       }
     </style>
   </head>
   <body>
-    <div class="toastwrap" id="toasts"></div>
     <div class="container">
       <header>
         <div>
-          <h1>Nifty Options Ladder Trader</h1>
-          <div class="subtitle">Configure Dhan credentials + strategy params, refresh instruments, then start/stop the engine.</div>
+          <h1>Nifty Semi Algo Trader</h1>
+          <div class="subtitle">
+            Pick a CE/PE strike from the dashboard (±10 strikes). Entry is manual (BUY/SELL),
+            exits are automatic via SL/Target/TSL based on option premium (%).
+          </div>
         </div>
-        <div class="top-right">
-          <div class="pill"><span class="dot" id="dot_run"></span><span id="pill_run">Disconnected</span></div>
-          <div class="pill"><span class="dot" id="dot_trade"></span><span id="pill_trade">Trading disabled</span></div>
-          <div class="pill"><span id="pill_rtt">RTT: -</span></div>
+        <div class="actions" style="margin:0">
+          <span class="pill"><span id="dotConn" class="dot bad"></span><span id="pillConn">Disconnected</span></span>
+          <span class="pill"><span id="dotTrade" class="dot"></span><span id="pillTrade">Trading disabled</span></span>
         </div>
       </header>
 
       <div class="grid">
-        <div class="card">
-          <h3>Credentials</h3>
-          <label>Dhan Client ID</label>
-          <input id="client_id" placeholder="e.g. 1100XXXX" />
-          <label>Access Token</label>
-          <input id="access_token" placeholder="paste access token" />
+        <div class="card card-settings">
+          <h3>Settings</h3>
+
+          <div class="row2">
+            <div>
+              <label>Client ID</label>
+              <input id="client_id" placeholder="Dhan client id" />
+            </div>
+            <div>
+              <label>Access token</label>
+              <input id="access_token" placeholder="Dhan access token" />
+            </div>
+          </div>
+
           <div class="actions">
-            <button id="btn_reload" onclick="safe(loadConfig)">Reload</button>
-            <button id="btn_save" class="btn-primary" onclick="safe(saveConfig)">Save</button>
+            <label style="margin:0; display:flex; align-items:center; gap:10px;">
+              <input id="trading_enabled" type="checkbox" style="width:auto; transform: translateY(1px);" />
+              <span class="muted">Trading enabled</span>
+            </label>
           </div>
-          <div class="small">Tip: Use MARKET orders to start; LIMIT needs option LTP ticks first.</div>
-        </div>
 
-        <div class="card">
-          <h3>Strategy</h3>
-          <div class="row2">
-            <div style="flex:1; min-width: 220px;">
-              <label>Start preference</label>
-              <select id="start_preference">
-                <option value="AUTO">AUTO (either side)</option>
-                <option value="CALL">CALL first</option>
-                <option value="PUT">PUT first</option>
-              </select>
-            </div>
-            <div style="flex:1; min-width: 220px;">
-              <label>Strike step</label>
-              <input id="strike_step" type="number" />
-            </div>
-            <div style="flex:1; min-width: 220px;">
-              <label>Weekly expiry</label>
+          <div class="row3">
+            <div>
+              <label>Contract</label>
               <select id="weekly_expiry">
-                <option value="CURRENT">Current weekly</option>
-                <option value="NEXT">Next weekly</option>
+                <option value="CURRENT">Current week</option>
+                <option value="NEXT">Next week</option>
               </select>
             </div>
-            <div style="flex:1; min-width: 220px;">
-              <label>Lots per add</label>
-              <input id="lots_per_add" type="number" />
+            <div>
+              <label>Strike step</label>
+              <input id="strike_step" type="number" min="1" step="1" />
+            </div>
+            <div>
+              <label>Chain strikes each side</label>
+              <input id="chain_strikes_each_side" type="number" min="1" max="25" step="1" />
             </div>
           </div>
 
-          <div class="row2">
-            <div style="flex:1; min-width: 220px;">
-              <label>Add step (points)</label>
-              <input id="add_step_points" type="number" />
+          <div class="row3">
+            <div>
+              <label>Stop loss (% of premium)</label>
+              <input id="stop_loss_pct" type="number" min="0" step="0.1" />
             </div>
-            <div style="flex:1; min-width: 220px;">
-              <label>Target (points)</label>
-              <input id="target_points" type="number" />
+            <div>
+              <label>Target (% of premium)</label>
+              <input id="target_pct" type="number" min="0" step="0.1" />
             </div>
-          </div>
-
-          <div class="row2">
-            <div style="flex:1; min-width: 220px;">
-              <label>Trail step (points)</label>
-              <input id="trail_step_points" type="number" />
-            </div>
-            <div style="flex:1; min-width: 220px;">
-              <label>Initial SL (points)</label>
-              <input id="initial_sl_points" type="number" />
+            <div>
+              <label>Trailing SL (% of premium)</label>
+              <input id="trailing_stop_pct" type="number" min="0" step="0.1" />
             </div>
           </div>
 
-          <div class="row2">
-            <div style="flex:1; min-width: 220px;">
-              <label>Max losses/day</label>
-              <input id="max_losses_per_day" type="number" />
+          <div class="row4">
+            <div>
+              <label>Lots</label>
+              <input id="lots" type="number" min="1" step="1" />
             </div>
-            <div style="flex:1; min-width: 220px;">
-              <label>Max adds</label>
-              <input id="max_adds" type="number" />
-            </div>
-            <div style="flex:1; min-width: 220px;">
+            <div>
               <label>Order type</label>
               <select id="order_type">
                 <option value="MARKET">MARKET</option>
                 <option value="LIMIT">LIMIT</option>
               </select>
             </div>
+            <div>
+              <label>Limit price offset</label>
+              <input id="limit_price_offset" type="number" step="0.05" />
+            </div>
+            <div>
+              <label>Nifty spot security id</label>
+              <input id="nifty_spot_security_id" />
+            </div>
           </div>
 
-          <label>Limit price offset</label>
-          <input id="limit_price_offset" type="number" step="0.05" />
+          <div class="actions">
+            <button class="btn-primary" onclick="safe(saveConfig)">Save settings</button>
+            <button onclick="safe(refreshInstruments)">Refresh instruments</button>
+            <button class="btn-good" onclick="safe(connect)">Connect</button>
+            <button class="btn-danger" onclick="safe(disconnect)">Disconnect</button>
+          </div>
+
+          <div class="mini" id="settingsHint"></div>
         </div>
 
-        <div class="card" style="grid-column: span 12;">
-          <h3>Controls & Status</h3>
-          <div class="row2" style="align-items:center;">
-            <label style="display:flex;gap:10px;align-items:center;margin-top:0;min-width:240px;">
-              <input id="trading_enabled" type="checkbox" style="width:auto;" />
-              Trading enabled (config)
-            </label>
-            <div style="min-width: 260px;">
-              <label style="margin-top:0;">Engine type</label>
-              <select id="engine_kind">
-                <option value="BUY">Option buying engine</option>
-                <option value="SELL">Option selling engine</option>
-              </select>
+        <div class="card card-dashboard">
+          <h3>Dashboard</h3>
+          <div class="kvs">
+            <div class="kv">
+              <div class="k">NIFTY spot</div>
+              <div class="v mono" id="spotLtp">-</div>
+              <div class="mini muted" id="atmStrike">ATM: -</div>
             </div>
-            <div class="actions" style="margin-top:0;">
-              <button id="btn_save2" class="btn-primary" onclick="safe(saveConfig)">Save config</button>
-              <button id="btn_refresh" onclick="safe(refreshInstruments)">Refresh instruments</button>
-              <button id="btn_start" class="btn-primary" onclick="safe(startEngine)">Start engine</button>
-              <button id="btn_stop" class="btn-danger" onclick="safe(stopEngine)">Stop engine</button>
-              <button id="btn_sqoff" class="btn-danger" onclick="safe(squareOffStop)">Square off (stop)</button>
-              <button id="btn_status" onclick="safe(pollStatus)">Refresh status</button>
-              <button id="btn_latency" onclick="safe(loadLatency)">Latency</button>
+            <div class="kv">
+              <div class="k">Instrument master</div>
+              <div class="v" id="instrLoaded">-</div>
+              <div class="mini muted" id="contractInfo">Contract: -</div>
             </div>
           </div>
 
-          <div class="kv" style="margin-top: 10px;">
-            <div class="k">Mode</div><div class="v" id="v_mode">-</div>
-            <div class="k">Active ladder</div><div class="v" id="v_ladder">-</div>
-            <div class="k">Position</div><div class="v" id="v_position">-</div>
-            <div class="k">Option symbol</div><div class="v mono" id="v_contract">-</div>
-            <div class="k">Option LTP</div><div class="v" id="v_option_ltp">-</div>
-            <div class="k">Contract expiry</div><div class="v mono" id="v_contract_expiry">-</div>
-            <div class="k">Spot LTP</div><div class="v" id="v_spot">-</div>
-            <div class="k">Entry</div><div class="v" id="v_entry">-</div>
-            <div class="k">Stop</div><div class="v" id="v_stop">-</div>
-            <div class="k">Next add</div><div class="v" id="v_next">-</div>
-            <div class="k">Lots open</div><div class="v" id="v_lots">-</div>
-            <div class="k">Qty</div><div class="v mono" id="v_qty">-</div>
-            <div class="k">Adds</div><div class="v" id="v_adds">-</div>
-            <div class="k">Weekly expiry</div><div class="v" id="v_weekly_expiry">-</div>
-            <div class="k">Loss count</div><div class="v" id="v_losses">-</div>
-            <div class="k">Day locked</div><div class="v" id="v_locked">-</div>
-            <div class="k">Last error</div><div class="v" id="v_err">-</div>
+          <div class="tablewrap" title="Tip: you can scroll horizontally if needed to see the full PE side.">
+            <table>
+              <thead>
+                <tr>
+                  <th>Strike</th>
+                  <th>Call</th>
+                  <th>CE LTP</th>
+                  <th>BUY</th>
+                  <th>SELL</th>
+                  <th>Put</th>
+                  <th>PE LTP</th>
+                  <th>BUY</th>
+                  <th>SELL</th>
+                </tr>
+              </thead>
+              <tbody id="chainBody"></tbody>
+            </table>
           </div>
-
-          <pre id="status">{}</pre>
-          <pre id="latency">{}</pre>
+          <div class="mini muted">Tip: BUY/SELL buttons place orders using your configured Lots (no pyramiding).</div>
         </div>
 
-        <div class="card" style="grid-column: span 12;">
-          <h3>Simulation</h3>
-          <div class="row2" style="align-items:center;">
-            <div class="actions" style="margin-top:0;">
-              <button id="btn_sim_start" class="btn-primary" onclick="safe(startSim)">Start simulation</button>
-              <button id="btn_sim_stop" class="btn-danger" onclick="safe(stopSim)">Stop simulation</button>
-              <button id="btn_sim_status" onclick="safe(pollSim)">Refresh sim</button>
-              <button id="btn_sim_trades" onclick="safe(loadSimTrades)">Refresh trades</button>
-            </div>
-            <div class="top-right">
-              <span class="pill"><span class="dot" id="dot_sim"></span><span id="pill_sim">Stopped</span></span>
-            </div>
+        <div class="card card-position">
+          <h3>Active Position</h3>
+          <div class="actions">
+            <button class="btn-danger" id="btnSquareOff" onclick="safe(squareOff)" disabled>Square off</button>
           </div>
-
-          <div class="kv" style="margin-top: 10px;">
-            <div class="k">Mode</div><div class="v" id="sim_mode">-</div>
-            <div class="k">Active ladder</div><div class="v" id="sim_ladder">-</div>
-            <div class="k">Spot LTP</div><div class="v" id="sim_spot">-</div>
-            <div class="k">Open trade</div><div class="v" id="sim_open">-</div>
-            <div class="k">Trades total</div><div class="v" id="sim_count">0</div>
-            <div class="k">Last error</div><div class="v" id="sim_err">-</div>
-          </div>
-
           <div class="tablewrap">
             <table>
               <thead>
                 <tr>
-                  <th>ID</th>
                   <th>Side</th>
                   <th>Symbol</th>
-                  <th>Qty</th>
-                  <th class="mono">Spot in</th>
-                  <th class="mono">Spot out</th>
-                  <th class="mono">Prem in</th>
-                  <th class="mono">Prem out</th>
-                  <th class="mono">P&amp;L</th>
-                  <th>Status</th>
-                  <th>Reason</th>
-                  <th class="mono">Entry time</th>
-                  <th class="mono">Exit time</th>
+                  <th>Entry</th>
+                  <th>SL</th>
+                  <th>TSL</th>
+                  <th>Target</th>
+                  <th>LTP</th>
+                  <th>P&amp;L</th>
+                  <th>Entry time</th>
+                  <th>Exit reason</th>
                 </tr>
               </thead>
-              <tbody id="sim_trades_body"></tbody>
+              <tbody>
+                <tr id="posRow">
+                  <td id="posSide">-</td>
+                  <td class="mono" id="posSym">-</td>
+                  <td class="mono" id="posEntry">-</td>
+                  <td class="mono" id="posSl">-</td>
+                  <td class="mono" id="posTsl">-</td>
+                  <td class="mono" id="posTgt">-</td>
+                  <td class="mono" id="posLtp">-</td>
+                  <td class="mono" id="posPnl">-</td>
+                  <td class="mono" id="posTs">-</td>
+                  <td id="posReason">-</td>
+                </tr>
+              </tbody>
             </table>
           </div>
-
-          <pre id="sim_status">{}</pre>
         </div>
       </div>
+
+      <div id="statusbar">
+        <div id="statusText">Ready.</div>
+        <div class="mini muted" id="errText"></div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast">
+      <div class="t" id="toastT"></div>
+      <div class="m" id="toastM"></div>
+    </div>
 
     <script>
       const $ = (id) => document.getElementById(id);
 
-      function engineKind() {
-        const v = $("engine_kind") ? $("engine_kind").value : "BUY";
-        return v === "SELL" ? "SELL" : "BUY";
+      function fmt(n) {
+        if (n === null || n === undefined) return "-";
+        const x = Number(n);
+        if (!Number.isFinite(x)) return "-";
+        return x.toFixed(2);
       }
 
-      function apiBase() {
-        return engineKind() === "SELL" ? "/api/sell" : "/api";
+      function toast(title, msg) {
+        $("toastT").textContent = String(title || "");
+        $("toastM").textContent = String(msg || "");
+        const t = $("toast");
+        t.style.display = "block";
+        clearTimeout(window.__toastTimer);
+        window.__toastTimer = setTimeout(() => { t.style.display = "none"; }, 2600);
       }
 
-      function toast(message, detail, kind = "info") {
-        const wrap = $("toasts");
-        const el = document.createElement("div");
-        el.className = `toast ${kind === "good" ? "good" : kind === "bad" ? "bad" : ""}`;
-        el.innerHTML = `<div>${escapeHtml(String(message))}</div>${detail ? `<div class="t">${escapeHtml(String(detail))}</div>` : ""}`;
-        wrap.appendChild(el);
-        setTimeout(() => el.style.opacity = "0.0", 4200);
-        setTimeout(() => el.remove(), 4800);
-      }
-
-      function escapeHtml(s){
-        return s.replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll("\"","&quot;").replaceAll("'","&#039;");
-      }
-
-      function setBusy(busy) {
-        ["btn_reload","btn_save","btn_save2","btn_refresh","btn_start","btn_stop","btn_sqoff","btn_status","btn_latency"].forEach(id => {
-          const el = $(id);
-          if (el) el.disabled = !!busy;
+      async function api(path, opts={}) {
+        const res = await fetch(`/api${path}`, {
+          headers: { "Content-Type": "application/json" },
+          ...opts,
         });
-      }
-
-      async function apiJson(path, opts = {}) {
-        const controller = new AbortController();
-        const timeoutMs = 15000;
-        const t = setTimeout(() => controller.abort(), timeoutMs);
-        const started = performance.now();
-        try {
-          const res = await fetch(path, { ...opts, signal: controller.signal });
-          const text = await res.text();
-          let data;
-          try { data = JSON.parse(text); } catch { data = { raw: text }; }
-          const rtt = Math.max(0, performance.now() - started);
-          $("pill_rtt").textContent = `RTT: ${rtt.toFixed(0)}ms`;
-          if (!res.ok) {
-            const err = new Error((data && (data.detail || data.raw)) ? (data.detail || data.raw) : JSON.stringify(data));
-            err.status = res.status;
-            err.data = data;
-            throw err;
-          }
-          return data;
-        } finally {
-          clearTimeout(t);
+        if (!res.ok) {
+          let detail = await res.text();
+          try { detail = JSON.parse(detail).detail || detail; } catch {}
+          throw new Error(`${res.status} ${res.statusText}: ${detail}`);
         }
+        const ct = res.headers.get("content-type") || "";
+        if (ct.includes("application/json")) return await res.json();
+        return await res.text();
       }
 
       async function safe(fn) {
-        setBusy(true);
         try {
           await fn();
         } catch (e) {
-          const msg = (e && e.message) ? e.message : String(e);
-          $("status").textContent = `ERROR: ${msg}`;
-          toast("Request failed", msg, "bad");
-        } finally {
-          setBusy(false);
+          $("statusText").textContent = `ERROR: ${e.message || e}`;
+          toast("Error", e.message || String(e));
         }
       }
 
-      async function safeBg(fn) {
-        try {
-          await fn();
-        } catch (e) {
-          const msg = (e && e.message) ? e.message : String(e);
-          $("status").textContent = `ERROR: ${msg}`;
-          toast("Background error", msg, "bad");
-        }
-      }
-
-      function setForm(cfg) {
-        $("client_id").value = cfg.client_id ?? "";
-        $("access_token").value = cfg.access_token ?? "";
-        $("trading_enabled").checked = !!cfg.trading_enabled;
-        $("start_preference").value = cfg.start_preference ?? "AUTO";
-        $("strike_step").value = cfg.strike_step ?? 100;
-        $("weekly_expiry").value = cfg.weekly_expiry ?? "CURRENT";
-        $("add_step_points").value = cfg.add_step_points ?? 10;
-        $("target_points").value = cfg.target_points ?? 50;
-        $("trail_step_points").value = cfg.trail_step_points ?? 10;
-        $("initial_sl_points").value = cfg.initial_sl_points ?? 10;
-        $("lots_per_add").value = cfg.lots_per_add ?? 1;
-        $("max_losses_per_day").value = cfg.max_losses_per_day ?? 5;
-        $("max_adds").value = cfg.max_adds ?? 0;
-        $("order_type").value = cfg.order_type ?? "MARKET";
-        $("limit_price_offset").value = cfg.limit_price_offset ?? 0.0;
-
-        $("pill_trade").textContent = cfg.trading_enabled ? "Trading enabled" : "Trading disabled";
-        $("dot_trade").className = `dot ${cfg.trading_enabled ? "good" : ""}`;
-      }
-
-      function getForm() {
-        return {
-          client_id: $("client_id").value || null,
-          access_token: $("access_token").value || null,
-          trading_enabled: !!$("trading_enabled").checked,
-          start_preference: $("start_preference").value,
-          strike_step: Number($("strike_step").value),
-          weekly_expiry: $("weekly_expiry").value,
-          add_step_points: Number($("add_step_points").value),
-          target_points: Number($("target_points").value),
-          trail_step_points: Number($("trail_step_points").value),
-          initial_sl_points: Number($("initial_sl_points").value),
-          lots_per_add: Number($("lots_per_add").value),
-          max_losses_per_day: Number($("max_losses_per_day").value),
-          max_adds: Number($("max_adds").value),
-          order_type: $("order_type").value,
-          limit_price_offset: Number($("limit_price_offset").value)
-        };
+      function setConnUI(running, tradingEnabled) {
+        $("pillConn").textContent = running ? "Connected" : "Disconnected";
+        $("dotConn").className = `dot ${running ? "good" : "bad"}`;
+        $("pillTrade").textContent = tradingEnabled ? "Trading enabled" : "Trading disabled";
+        $("dotTrade").className = `dot ${tradingEnabled ? "good" : ""}`;
       }
 
       async function loadConfig() {
-        const cfg = await apiJson("/api/config");
-        setForm(cfg);
-        toast("Config loaded", null, "good");
+        const cfg = await api("/config");
+        $("client_id").value = cfg.client_id || "";
+        $("access_token").value = cfg.access_token || "";
+        $("trading_enabled").checked = !!cfg.trading_enabled;
+        $("weekly_expiry").value = cfg.weekly_expiry || "CURRENT";
+        $("strike_step").value = String(cfg.strike_step ?? 50);
+        $("chain_strikes_each_side").value = String(cfg.chain_strikes_each_side ?? 10);
+        $("stop_loss_pct").value = String(cfg.stop_loss_pct ?? 20);
+        $("target_pct").value = String(cfg.target_pct ?? 30);
+        $("trailing_stop_pct").value = String(cfg.trailing_stop_pct ?? 0);
+        $("lots").value = String(cfg.lots ?? 1);
+        $("order_type").value = cfg.order_type || "MARKET";
+        $("limit_price_offset").value = String(cfg.limit_price_offset ?? 0);
+        $("nifty_spot_security_id").value = cfg.nifty_spot_security_id || "13";
       }
 
       async function saveConfig() {
-        const cfg = getForm();
-        const saved = await apiJson("/api/config", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cfg) });
-        setForm(saved);
-        toast("Config saved", null, "good");
-      }
-
-      async function patchConfig(patch) {
-        const saved = await apiJson("/api/config", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
-        setForm(saved);
+        const body = {
+          client_id: $("client_id").value.trim() || null,
+          access_token: $("access_token").value.trim() || null,
+          trading_enabled: !!$("trading_enabled").checked,
+          weekly_expiry: $("weekly_expiry").value,
+          strike_step: Number($("strike_step").value || 50),
+          chain_strikes_each_side: Number($("chain_strikes_each_side").value || 10),
+          stop_loss_pct: Number($("stop_loss_pct").value || 0),
+          target_pct: Number($("target_pct").value || 0),
+          trailing_stop_pct: Number($("trailing_stop_pct").value || 0),
+          lots: Number($("lots").value || 1),
+          order_type: $("order_type").value,
+          limit_price_offset: Number($("limit_price_offset").value || 0),
+          nifty_spot_security_id: $("nifty_spot_security_id").value.trim() || "13",
+        };
+        await api("/config", { method:"PUT", body: JSON.stringify(body) });
+        toast("Saved", "Settings saved");
+        $("settingsHint").textContent = "Saved.";
       }
 
       async function refreshInstruments() {
-        toast("Refreshing instruments…", "Downloading scrip-master CSV", "info");
-        await apiJson("/api/instruments/refresh", { method: "POST" });
-        toast("Instruments refreshed", null, "good");
-        await pollStatus();
+        await api("/instruments/refresh", { method:"POST" });
+        toast("Done", "Instrument master refreshed");
       }
 
-      async function startEngine() {
-        const status = await apiJson(`${apiBase()}/engine/start`, { method: "POST" });
-        renderStatus(status);
-        toast("Engine started", null, "good");
+      async function connect() {
+        await api("/engine/start", { method:"POST" });
+        toast("Connected", "Market feed started");
       }
 
-      async function stopEngine() {
-        const status = await apiJson(`${apiBase()}/engine/stop`, { method: "POST" });
-        renderStatus(status);
-        toast("Engine stopped", null, "good");
+      async function disconnect() {
+        await api("/engine/stop", { method:"POST" });
+        toast("Disconnected", "Market feed stopped");
       }
 
-      async function squareOffStop() {
-        const status = await apiJson(`${apiBase()}/engine/squareoff_stop`, { method: "POST" });
-        renderStatus(status);
-        toast("Squared off", "Engine stopped", "good");
+      async function openTrade(strike, optionType, side) {
+        await api("/trade/open", {
+          method: "POST",
+          body: JSON.stringify({ strike, option_type: optionType, side }),
+        });
+        toast("Order sent", `${side} ${optionType} ${strike}`);
       }
 
-      async function pollStatus() {
-        const status = await apiJson(`${apiBase()}/engine/status`);
-        renderStatus(status);
+      async function squareOff() {
+        await api("/trade/squareoff", { method:"POST" });
+        toast("Square off", "Square off requested");
       }
 
-      async function loadLatency() {
-        const lat = await apiJson(`${apiBase()}/engine/latency`);
-        renderLatency(lat);
-        toast("Latency loaded", null, "good");
-      }
+      let currentStrikes = [];
+      function renderChain(chain, atmStrike) {
+        const strikes = (chain || []).map(r => r.strike);
+        const same = strikes.length === currentStrikes.length && strikes.every((v,i) => v === currentStrikes[i]);
+        const body = $("chainBody");
 
-      async function startSim() {
-        const st = await apiJson(`${apiBase()}/sim/start`, { method: "POST" });
-        renderSimStatus(st);
-        await loadSimTrades();
-        toast("Simulation started", null, "good");
-      }
+        if (!same) {
+          currentStrikes = strikes;
+          body.innerHTML = "";
+          for (const row of chain) {
+            const tr = document.createElement("tr");
+            if (atmStrike !== null && atmStrike !== undefined && row.strike === atmStrike) tr.className = "atm";
 
-      async function stopSim() {
-        const st = await apiJson(`${apiBase()}/sim/stop`, { method: "POST" });
-        renderSimStatus(st);
-        toast("Simulation stopped", null, "good");
-      }
+            const ce = row.ce;
+            const pe = row.pe;
+            const ceSym = ce ? ce.symbol : "";
+            const peSym = pe ? pe.symbol : "";
+            tr.innerHTML = `
+              <td class="mono">${row.strike}</td>
+              <td class="mono mini" title="${ceSym}">${ceSym}</td>
+              <td class="mono" id="ce_ltp_${row.strike}">${fmt(ce ? ce.ltp : null)}</td>
+              <td><button class="btn-good" ${ce ? "" : "disabled"} id="ce_buy_${row.strike}">BUY</button></td>
+              <td><button class="btn-danger" ${ce ? "" : "disabled"} id="ce_sell_${row.strike}">SELL</button></td>
+              <td class="mono mini" title="${peSym}">${peSym}</td>
+              <td class="mono" id="pe_ltp_${row.strike}">${fmt(pe ? pe.ltp : null)}</td>
+              <td><button class="btn-good" ${pe ? "" : "disabled"} id="pe_buy_${row.strike}">BUY</button></td>
+              <td><button class="btn-danger" ${pe ? "" : "disabled"} id="pe_sell_${row.strike}">SELL</button></td>
+            `;
+            body.appendChild(tr);
 
-      async function pollSim() {
-        const st = await apiJson(`${apiBase()}/sim/status`);
-        renderSimStatus(st);
-      }
-
-      async function loadSimTrades() {
-        const trades = await apiJson(`${apiBase()}/sim/trades?limit=200`);
-        renderSimTrades(trades);
-      }
-
-      function fmt(n) {
-        if (n === null || n === undefined) return "-";
-        if (typeof n === "number") return Number.isFinite(n) ? n.toFixed(2) : String(n);
-        return String(n);
-      }
-
-      function fmtTs(ts) {
-        if (!ts) return "-";
-        try {
-          const d = new Date(ts);
-          if (Number.isNaN(d.getTime())) return String(ts);
-          return d.toLocaleTimeString(undefined, { hour12: false });
-        } catch {
-          return String(ts);
+            if (ce) {
+              $("ce_buy_"+row.strike).onclick = () => safe(() => openTrade(row.strike, "CE", "BUY"));
+              $("ce_sell_"+row.strike).onclick = () => safe(() => openTrade(row.strike, "CE", "SELL"));
+            }
+            if (pe) {
+              $("pe_buy_"+row.strike).onclick = () => safe(() => openTrade(row.strike, "PE", "BUY"));
+              $("pe_sell_"+row.strike).onclick = () => safe(() => openTrade(row.strike, "PE", "SELL"));
+            }
+          }
+        } else {
+          // Smooth refresh: only update LTP cells.
+          for (const row of chain) {
+            const ce = row.ce;
+            const pe = row.pe;
+            const ceCell = $("ce_ltp_"+row.strike);
+            const peCell = $("pe_ltp_"+row.strike);
+            if (ceCell) ceCell.textContent = fmt(ce ? ce.ltp : null);
+            if (peCell) peCell.textContent = fmt(pe ? pe.ltp : null);
+          }
         }
       }
 
-      function renderStatus(status) {
-        $("status").textContent = JSON.stringify(status, null, 2);
-        $("v_mode").textContent = status.mode ?? "-";
-        $("v_ladder").textContent = status.active_ladder ?? "-";
-        $("v_position").textContent = status.position ?? "-";
-        $("v_contract").textContent = status.active_contract_symbol ?? "-";
-        $("v_option_ltp").textContent = fmt(status.active_option_ltp);
-        $("v_contract_expiry").textContent = status.active_contract_expiry ? String(status.active_contract_expiry) : "-";
-        $("v_spot").textContent = fmt(status.spot_ltp);
-        $("v_entry").textContent = fmt(status.entry_spot);
-        $("v_stop").textContent = fmt(status.stop_spot);
-        $("v_next").textContent = fmt(status.next_add_spot);
-        $("v_lots").textContent = String(status.lots_open ?? 0);
-        $("v_qty").textContent = (status.active_qty === null || status.active_qty === undefined) ? "-" : String(status.active_qty);
-        const addsDone = (status.adds_done ?? 0);
-        const maxAdds = (status.max_adds ?? 0);
-        $("v_adds").textContent = (maxAdds && maxAdds > 0) ? `${addsDone}/${maxAdds}` : String(addsDone);
-        $("v_weekly_expiry").textContent = status.weekly_expiry ?? "-";
-        $("v_losses").textContent = String(status.loss_count ?? 0);
-        $("v_locked").textContent = String(!!status.day_locked);
-        $("v_err").textContent = status.last_error ? String(status.last_error) : "-";
-
-        $("pill_run").textContent = status.running ? "Connected" : "Disconnected";
-        $("dot_run").className = `dot ${status.running ? "good" : "bad"}`;
-        $("pill_trade").textContent = status.trading_enabled ? "Trading enabled" : "Trading disabled";
-        $("dot_trade").className = `dot ${status.trading_enabled ? "good" : ""}`;
-      }
-
-      function renderLatency(lat) {
-        $("latency").textContent = JSON.stringify(lat, null, 2);
-      }
-
-      function renderSimStatus(st) {
-        $("sim_status").textContent = JSON.stringify(st, null, 2);
-        $("sim_mode").textContent = st.mode ?? "-";
-        $("sim_ladder").textContent = st.active_ladder ?? "-";
-        $("sim_spot").textContent = fmt(st.spot_ltp);
-        $("sim_open").textContent = st.open_trade_id ? String(st.open_trade_id) : "-";
-        $("sim_count").textContent = String(st.trades_total ?? 0);
-        $("sim_err").textContent = st.last_error ? String(st.last_error) : "-";
-
-        $("pill_sim").textContent = st.running ? "Running" : "Stopped";
-        $("dot_sim").className = `dot ${st.running ? "good" : "bad"}`;
-      }
-
-      function renderSimTrades(trades) {
-        const body = $("sim_trades_body");
-        body.innerHTML = "";
-        for (const t of (trades || [])) {
-          const tr = document.createElement("tr");
-          const pnl = (t.pnl === null || t.pnl === undefined) ? null : Number(t.pnl);
-          const pnlCls = pnl === null ? "" : (pnl >= 0 ? "good" : "bad");
-
-          tr.innerHTML = `
-            <td class="mono">${escapeHtml(String(t.id ?? ""))}</td>
-            <td>${escapeHtml(String(t.side ?? ""))}</td>
-            <td class="mono">${escapeHtml(String(t.symbol ?? ""))}</td>
-            <td class="mono">${escapeHtml(String(t.qty ?? ""))}</td>
-            <td class="mono">${escapeHtml(fmt(t.entry_spot))}</td>
-            <td class="mono">${escapeHtml(fmt(t.exit_spot))}</td>
-            <td class="mono">${escapeHtml(fmt(t.entry_premium))}</td>
-            <td class="mono">${escapeHtml(fmt(t.exit_premium))}</td>
-            <td class="mono ${pnlCls}">${escapeHtml(pnl === null ? "-" : pnl.toFixed(2))}</td>
-            <td>${escapeHtml(String(t.status ?? ""))}</td>
-            <td>${escapeHtml(String(t.exit_reason ?? ""))}</td>
-            <td class="mono">${escapeHtml(fmtTs(t.entry_ts))}</td>
-            <td class="mono">${escapeHtml(fmtTs(t.exit_ts))}</td>
-          `;
-          body.appendChild(tr);
+      function renderPosition(pos) {
+        const has = !!pos;
+        $("btnSquareOff").disabled = !has;
+        if (!has) {
+          $("posSide").textContent = "-";
+          $("posSym").textContent = "-";
+          $("posEntry").textContent = "-";
+          $("posSl").textContent = "-";
+          $("posTsl").textContent = "-";
+          $("posTgt").textContent = "-";
+          $("posLtp").textContent = "-";
+          $("posPnl").textContent = "-";
+          $("posPnl").className = "mono";
+          $("posTs").textContent = "-";
+          $("posReason").textContent = "-";
+          return;
         }
+        $("posSide").textContent = pos.side;
+        $("posSym").textContent = pos.symbol;
+        $("posEntry").textContent = fmt(pos.entry_price);
+        $("posSl").textContent = fmt(pos.stop_loss_price);
+        $("posTsl").textContent = fmt(pos.trailing_stop_price);
+        $("posTgt").textContent = fmt(pos.target_price);
+        $("posLtp").textContent = fmt(pos.last_ltp);
+        const pnl = (pos.pnl === null || pos.pnl === undefined) ? null : Number(pos.pnl);
+        $("posPnl").textContent = pnl === null ? "-" : pnl.toFixed(2);
+        $("posPnl").className = `mono ${pnl === null ? "" : (pnl >= 0 ? "good" : "bad")}`;
+        $("posTs").textContent = pos.entry_ts || "-";
+        $("posReason").textContent = pos.exit_reason || "-";
       }
 
-      window.addEventListener("unhandledrejection", (event) => {
-        const msg = (event && event.reason && event.reason.message) ? event.reason.message : String(event.reason || event);
-        $("status").textContent = `ERROR: ${msg}`;
-        toast("Unhandled error", msg, "bad");
-      });
+      async function pollDashboard() {
+        const snap = await api("/dashboard");
+        const st = snap.status || {};
+        setConnUI(!!st.running, !!st.trading_enabled);
+
+        $("spotLtp").textContent = fmt(st.spot_ltp);
+        $("atmStrike").textContent = `ATM: ${snap.atm_strike ?? "-"}`;
+        $("instrLoaded").textContent = st.instruments_loaded ? "Loaded" : "Not loaded";
+        $("contractInfo").textContent = `Contract: ${(st.weekly_expiry || "-")}`;
+
+        renderChain(snap.chain || [], snap.atm_strike);
+        renderPosition(st.active_position || null);
+
+        const err = (st.last_error || st.feed_error) ? `Error: ${(st.last_error || st.feed_error)}` : "";
+        $("errText").textContent = err;
+        $("statusText").textContent = st.running ? "Live updates on." : "Not connected.";
+      }
 
       // Initial load
-      const savedKind = localStorage.getItem("engine_kind");
-      if (savedKind && $("engine_kind")) $("engine_kind").value = savedKind;
-      safe(async () => { await loadConfig(); await pollStatus(); await pollSim(); await loadSimTrades(); await loadLatency(); });
-
-      // Persist important toggles immediately so browser refresh keeps state.
-      $("trading_enabled").addEventListener("change", () =>
-        safe(async () => { await patchConfig({ trading_enabled: !!$("trading_enabled").checked }); toast("Saved", "trading_enabled", "good"); })
-      );
-      $("start_preference").addEventListener("change", () =>
-        safe(async () => { await patchConfig({ start_preference: $("start_preference").value }); toast("Saved", "start_preference", "good"); })
-      );
-      $("engine_kind").addEventListener("change", () => {
-        localStorage.setItem("engine_kind", engineKind());
-        safe(async () => { await pollStatus(); await pollSim(); await loadSimTrades(); await loadLatency(); });
+      safe(async () => {
+        await loadConfig();
+        await pollDashboard();
       });
 
-      // Light auto-poll when running (keeps UI updated without spamming)
-      let bgInFlight = false;
+      // Smooth dashboard refresh.
+      let inFlight = false;
       setInterval(() => {
-        if (bgInFlight) return;
-        const running = $("pill_run").textContent === "Connected";
-        if (!running) return;
-        bgInFlight = true;
-        safeBg(pollStatus).finally(() => { bgInFlight = false; });
-      }, 1000);
-
-      let simBgInFlight = false;
-      setInterval(() => {
-        if (simBgInFlight) return;
-        const running = $("pill_sim").textContent === "Running";
-        if (!running) return;
-        simBgInFlight = true;
-        safeBg(async () => { await pollSim(); await loadSimTrades(); }).finally(() => { simBgInFlight = false; });
-      }, 1000);
+        if (inFlight) return;
+        inFlight = true;
+        safe(pollDashboard).finally(() => { inFlight = false; });
+      }, 800);
     </script>
-    </div>
   </body>
 </html>

@@ -44,9 +44,9 @@ class InstrumentStore:
 
         self._nifty_spot_security_id: Optional[str] = None
 
-        # (expiry_iso, strike, opt_type) -> OptionContract
-        self._weekly_cache: dict[tuple[str, int, str], OptionContract] = {}
-        self._weekly_rows: list[dict[str, str]] = []
+        # (expiry_dt, strike, opt_type) -> OptionContract
+        self._weekly_contracts: dict[tuple[datetime, int, str], OptionContract] = {}
+        self._weekly_expiries_all: list[datetime] = []
 
     @property
     def loaded(self) -> bool:
@@ -68,7 +68,8 @@ class InstrumentStore:
         async with self._lock:
             with path.open("r", newline="", encoding="utf-8") as f:
                 reader = csv.DictReader(f)
-                weekly_rows: list[dict[str, str]] = []
+                weekly_contracts: dict[tuple[datetime, int, str], OptionContract] = {}
+                expiries: set[datetime] = set()
                 nifty_spot_security_id: Optional[str] = None
                 for row in reader:
                     exch = row.get("SEM_EXM_EXCH_ID")
@@ -92,10 +93,42 @@ class InstrumentStore:
                         and exp_flag in ("W", "M")
                         and tsym.startswith("NIFTY-")
                     ):
-                        weekly_rows.append(row)
+                        exp_s = row.get("SEM_EXPIRY_DATE") or ""
+                        try:
+                            exp = datetime.strptime(exp_s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=IST)
+                        except ValueError:
+                            continue
 
-            self._weekly_rows = weekly_rows
-            self._weekly_cache.clear()
+                        opt = (row.get("SEM_OPTION_TYPE") or "").strip().upper()
+                        if opt not in ("CE", "PE"):
+                            continue
+
+                        strike_s = row.get("SEM_STRIKE_PRICE") or ""
+                        try:
+                            strike = int(float(strike_s))
+                        except ValueError:
+                            continue
+
+                        lot_s = row.get("SEM_LOT_UNITS") or ""
+                        try:
+                            lot_size = int(float(lot_s))
+                        except ValueError:
+                            lot_size = 0
+
+                        secid2 = row.get("SEM_SMST_SECURITY_ID") or ""
+                        contract = OptionContract(
+                            security_id=secid2,
+                            trading_symbol=tsym,
+                            expiry=exp,
+                            strike=strike,
+                            option_type=opt,  # type: ignore[arg-type]
+                            lot_size=lot_size,
+                        )
+                        weekly_contracts.setdefault((exp, strike, opt), contract)
+                        expiries.add(exp)
+
+            self._weekly_contracts = weekly_contracts
+            self._weekly_expiries_all = sorted(expiries)
             self._nifty_spot_security_id = nifty_spot_security_id
             self._loaded = True
 
@@ -131,76 +164,20 @@ class InstrumentStore:
             if expiry_offset_i < 0:
                 expiry_offset_i = 0
 
-            expiries: list[datetime] = []
-            for row in self._weekly_rows:
-                exp_s = row.get("SEM_EXPIRY_DATE") or ""
-                try:
-                    exp = datetime.strptime(exp_s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=IST)
-                except ValueError:
-                    continue
-                # Treat the expiry as valid for the entire calendar day.
-                # Dhan's CSV timestamps (e.g. 14:30:00) don't always align with the
-                # practical "tradeable until end-of-session" behavior.
-                if exp.date() >= now_ist.date():
-                    expiries.append(exp)
-
+            # Treat the expiry as valid for the entire calendar day.
+            # Dhan's CSV timestamps (e.g. 14:30:00) don't always align with the
+            # practical "tradeable until end-of-session" behavior.
+            expiries = [e for e in self._weekly_expiries_all if e.date() >= now_ist.date()]
             if not expiries:
                 raise RuntimeError("No weekly expiry >= now found in scrip master.")
 
-            expiries = sorted(set(expiries))
             if expiry_offset_i >= len(expiries):
                 raise RuntimeError(
                     f"Weekly expiry offset={expiry_offset_i} out of range (available={len(expiries)} from now)."
                 )
             chosen_expiry = expiries[expiry_offset_i]
 
-            expiry_iso = chosen_expiry.isoformat()
-            key = (expiry_iso, strike, option_type)
-            cached = self._weekly_cache.get(key)
-            if cached:
-                return cached
-
-            chosen: Optional[OptionContract] = None
-            for row in self._weekly_rows:
-                exp_s = row.get("SEM_EXPIRY_DATE") or ""
-                try:
-                    exp = datetime.strptime(exp_s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=IST)
-                except ValueError:
-                    continue
-                if exp != chosen_expiry:
-                    continue
-
-                tsym = row.get("SEM_TRADING_SYMBOL") or ""
-                opt = row.get("SEM_OPTION_TYPE") or ""
-                if opt != option_type:
-                    continue
-
-                strike_s = row.get("SEM_STRIKE_PRICE") or ""
-                try:
-                    strike_row = int(float(strike_s))
-                except ValueError:
-                    continue
-                if strike_row != strike:
-                    continue
-
-                secid = row.get("SEM_SMST_SECURITY_ID") or ""
-                lot_s = row.get("SEM_LOT_UNITS") or ""
-                try:
-                    lot_size = int(float(lot_s))
-                except ValueError:
-                    lot_size = 0
-                chosen = OptionContract(
-                    security_id=secid,
-                    trading_symbol=tsym,
-                    expiry=exp,
-                    strike=strike,
-                    option_type=option_type,
-                    lot_size=lot_size,
-                )
-                break
-
+            chosen = self._weekly_contracts.get((chosen_expiry, int(strike), str(option_type)))
             if chosen is None:
                 raise RuntimeError(f"Weekly option not found for strike={strike} {option_type} at {chosen_expiry}.")
-
-            self._weekly_cache[key] = chosen
             return chosen

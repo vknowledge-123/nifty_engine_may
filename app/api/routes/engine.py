@@ -3,10 +3,17 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel
 
 from app.runtime.settings import EngineConfig, EngineStatus
 
 router = APIRouter()
+
+
+class OpenTradeRequest(BaseModel):
+    strike: int
+    option_type: str  # "CE" / "PE"
+    side: str  # "BUY" / "SELL"
 
 
 @router.get("/config", response_model=EngineConfig)
@@ -57,24 +64,36 @@ async def stop_engine(request: Request) -> EngineStatus:
 async def engine_status(request: Request) -> EngineStatus:
     return await request.app.state.ctx.engine.status()
 
-@router.post("/engine/squareoff_flip", response_model=EngineStatus)
-async def engine_squareoff_flip(request: Request) -> EngineStatus:
+@router.get("/dashboard")
+async def dashboard(request: Request) -> dict:
+    return await request.app.state.ctx.engine.dashboard_snapshot()
+
+
+@router.post("/trade/open", response_model=EngineStatus)
+async def trade_open(request: Request, body: OpenTradeRequest) -> EngineStatus:
     ctx = request.app.state.ctx
     try:
-        # Backwards-compatible route: manual square-off now stops the engine (no flip).
-        return await ctx.engine.square_off_and_stop()
+        opt = str(body.option_type).upper().strip()
+        side = str(body.side).upper().strip()
+        if opt not in ("CE", "PE"):
+            raise RuntimeError("option_type must be CE or PE")
+        if side not in ("BUY", "SELL"):
+            raise RuntimeError("side must be BUY or SELL")
+        return await ctx.engine.open_position(strike=int(body.strike), option_type=opt, side=side)  # type: ignore[arg-type]
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.post("/trade/squareoff", response_model=EngineStatus)
+async def trade_squareoff(request: Request) -> EngineStatus:
+    ctx = request.app.state.ctx
+    try:
+        return await ctx.engine.square_off(reason="MANUAL")
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
 
 @router.post("/engine/squareoff_stop", response_model=EngineStatus)
 async def engine_squareoff_stop(request: Request) -> EngineStatus:
-    ctx = request.app.state.ctx
-    try:
-        return await ctx.engine.square_off_and_stop()
-    except RuntimeError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-
-
-@router.get("/engine/latency")
-async def engine_latency(request: Request) -> dict:
-    return request.app.state.ctx.engine.latency_snapshot()
+    # Backwards-compatible alias.
+    return await trade_squareoff(request)

@@ -5,75 +5,68 @@ from pathlib import Path
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
+from pydantic.config import ConfigDict
 
 from app.runtime.paths import CONFIG_PATH
 from app.runtime.persistence import read_json, write_json
 
 
 class EngineConfig(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
     client_id: Optional[str] = None
     access_token: Optional[str] = None
 
     trading_enabled: bool = False
 
-    # Startup preference: when waiting for first breakout after engine start,
-    # restrict to a specific ladder side or allow both.
-    start_preference: Literal["AUTO", "CALL", "PUT"] = "AUTO"
-
-    # Candle / entry
-    timeframe_seconds: int = 60
-    require_two_consecutive: int = 2
-
-    # Strike selection
-    strike_step: int = 100
-
     # Weekly expiry selection for option contracts.
     weekly_expiry: Literal["CURRENT", "NEXT"] = "CURRENT"
 
-    # Ladder parameters (in NIFTY spot points)
-    add_step_points: int = 10
-    target_points: int = 50
-    trail_step_points: int = 10
-    initial_sl_points: int = 10
+    # Dashboard option chain (spot-centered)
+    strike_step: int = Field(default=50, ge=1)
+    chain_strikes_each_side: int = Field(default=10, ge=1, le=25)
 
-    max_losses_per_day: int = 5
+    # Risk settings (percent of option premium at entry)
+    stop_loss_pct: float = Field(default=20.0, ge=0.0, le=500.0)
+    target_pct: float = Field(default=30.0, ge=0.0, le=500.0)
+    trailing_stop_pct: float = Field(default=0.0, ge=0.0, le=500.0)
 
     # Order params
+    lots: int = Field(default=1, ge=1, le=100)
     order_type: Literal["MARKET", "LIMIT"] = "MARKET"
     limit_price_offset: float = 0.0
-    lots_per_add: int = 1
-    max_adds: int = 0  # 0 = unlimited
 
     # Dhan instrument ids (optional overrides)
     nifty_spot_security_id: str = "13"
 
 
+class ActivePosition(BaseModel):
+    side: Literal["BUY", "SELL"]
+    symbol: str
+    security_id: str
+    option_type: Literal["CE", "PE"]
+    strike: int
+    expiry: str
+    qty: int
+    entry_price: float
+    last_ltp: Optional[float] = None
+    stop_loss_price: float
+    trailing_stop_price: Optional[float] = None
+    target_price: float
+    pnl: Optional[float] = None
+    entry_ts: str
+    exit_reason: Optional[str] = None
+
+
 class EngineStatus(BaseModel):
     running: bool
-    engine_kind: Optional[str] = None  # BUY / SELL
-    position: Optional[str] = None  # LONG / SHORT
     trading_enabled: bool
-    mode: str
-    active_ladder: Optional[str]
     spot_ltp: Optional[float]
-    entry_spot: Optional[float]
-    stop_spot: Optional[float]
-    next_add_spot: Optional[float]
-    lots_open: int
-    adds_done: int = 0
-    max_adds: int = 0
-    loss_count: int
-    day_locked: bool
-    active_contract_symbol: Optional[str] = None
-    active_contract_security_id: Optional[str] = None
-    active_option_ltp: Optional[float] = None
-    active_contract_expiry: Optional[str] = None
-    active_contract_strike: Optional[int] = None
-    active_contract_option_type: Optional[str] = None
-    active_contract_lot_size: Optional[int] = None
-    active_qty: Optional[int] = None
-    weekly_expiry: Optional[str] = None
+    weekly_expiry: str
+    instruments_loaded: bool
+    active_position: Optional[ActivePosition] = None
     last_error: Optional[str] = None
+    feed_error: Optional[str] = None
 
 
 class EngineConfigStore:
