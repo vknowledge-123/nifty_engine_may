@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 from app.runtime.instruments import InstrumentStore, OptionContract
 from app.runtime.settings import ActivePosition, EngineConfig, EngineConfigStore, EngineStatus
 from app.services.dhan.feed import DhanMarketFeed, FeedTick
-from app.services.dhan.rest import DhanRest
+from app.services.dhan.rest import DhanRest, PlacedOrder
 
 
 log = logging.getLogger("niftyalgo.semi_algo")
@@ -42,13 +42,13 @@ class _Position:
     qty: int
     entry_price: float
     entry_ts: datetime
+    risk_points: float
     stop_loss_price: float
     target_price: float
     trailing_stop_price: Optional[float] = None
-    peak_price: Optional[float] = None  # for BUY
-    trough_price: Optional[float] = None  # for SELL
     last_ltp: Optional[float] = None
     exit_reason: Optional[str] = None
+    cost_sl_applied: bool = False
 
 
 class SemiAlgoController:
@@ -56,7 +56,7 @@ class SemiAlgoController:
     Semi-algo controller:
     - Shows a spot-centered option chain (±N strikes) for current/next weekly expiry.
     - User clicks BUY/SELL on a CE/PE contract.
-    - The controller monitors option LTP for SL/Target/TSL (percent of premium) and squares off on exit.
+    - The controller monitors option LTP for SL/Target (and optional Cost SL) and squares off on exit.
     """
 
     def __init__(self, config_store: EngineConfigStore, instruments: InstrumentStore) -> None:
@@ -281,18 +281,21 @@ class SemiAlgoController:
             lot_size = max(1, int(contract.lot_size or 1))
             lots = max(1, int(getattr(cfg, "lots", 1) or 1))
             qty = lot_size * lots
-            await self._place_order(txn=side, security_id=secid, qty=qty, tag=f"open_{side.lower()}_{secid}")
+            tag = f"open_{side.lower()}_{secid}"
+            placed = await self._place_order(txn=side, security_id=secid, qty=qty, tag=tag)
 
-            entry_price = float(ltp)
-            sl_pct = float(cfg.stop_loss_pct) / 100.0
-            tgt_pct = float(cfg.target_pct) / 100.0
+            entry_price = await self._best_effort_entry_price(placed, correlation_id=tag, fallback=float(ltp))
+            sl_points = float(cfg.stop_loss_points)
+            tgt_points = float(cfg.target_points)
 
             if side == "BUY":
-                stop_loss_price = max(0.05, entry_price * (1.0 - sl_pct))
-                target_price = max(0.05, entry_price * (1.0 + tgt_pct))
+                stop_loss_price = max(0.05, entry_price - sl_points)
+                target_price = max(0.05, entry_price + tgt_points)
+                risk_points = max(0.0, entry_price - stop_loss_price)
             else:
-                stop_loss_price = max(0.05, entry_price * (1.0 + sl_pct))
-                target_price = max(0.05, entry_price * (1.0 - tgt_pct))
+                stop_loss_price = max(0.05, entry_price + sl_points)
+                target_price = max(0.05, entry_price - tgt_points)
+                risk_points = max(0.0, stop_loss_price - entry_price)
 
             self._active = _Position(
                 side=side,
@@ -300,14 +303,86 @@ class SemiAlgoController:
                 qty=qty,
                 entry_price=entry_price,
                 entry_ts=now,
+                risk_points=risk_points,
                 stop_loss_price=stop_loss_price,
                 target_price=target_price,
                 trailing_stop_price=None,
-                peak_price=entry_price if side == "BUY" else None,
-                trough_price=entry_price if side == "SELL" else None,
                 last_ltp=entry_price,
             )
             return await self.status()
+
+    @staticmethod
+    def _extract_order_id(resp: object) -> Optional[str]:
+        if not isinstance(resp, dict):
+            return None
+        data = resp.get("data")
+        for obj in (resp, data):
+            if not isinstance(obj, dict):
+                continue
+            v = obj.get("orderId") or obj.get("order_id") or obj.get("id")
+            if v is None:
+                continue
+            s = str(v).strip()
+            if s:
+                return s
+        return None
+
+    @staticmethod
+    def _extract_avg_price(resp: object) -> Optional[float]:
+        if not isinstance(resp, dict):
+            return None
+        if resp.get("status") != "success":
+            return None
+
+        data: object = resp.get("data")
+        if isinstance(data, dict) and "data" in data:
+            data = data.get("data")
+        if isinstance(data, list) and data:
+            data = data[0]
+        if not isinstance(data, dict):
+            return None
+
+        for k in (
+            "averageTradedPrice",
+            "avgTradedPrice",
+            "averageTradePrice",
+            "avgTradePrice",
+            "avgPrice",
+            "averagePrice",
+            "tradedPrice",
+            "tradePrice",
+            "executedPrice",
+            "executionPrice",
+            "filledPrice",
+            "price",
+        ):
+            v = data.get(k)
+            try:
+                x = float(v)  # type: ignore[arg-type]
+            except Exception:
+                continue
+            if math.isfinite(x) and x > 0.0:
+                return x
+        return None
+
+    async def _best_effort_entry_price(self, placed: PlacedOrder, *, correlation_id: str, fallback: float) -> float:
+        if self._rest is None:
+            return fallback
+
+        order_id = self._extract_order_id(placed.raw)
+        for _ in range(8):
+            try:
+                if order_id:
+                    resp = await asyncio.to_thread(self._rest.client.get_order_by_id, order_id)
+                else:
+                    resp = await asyncio.to_thread(self._rest.client.get_order_by_correlationID, correlation_id)
+            except Exception:
+                resp = None
+            price = self._extract_avg_price(resp)
+            if price is not None:
+                return price
+            await asyncio.sleep(0.25)
+        return fallback
 
     async def square_off(self, *, reason: str = "MANUAL") -> EngineStatus:
         await self._close_position(reason=reason)
@@ -333,11 +408,11 @@ class SemiAlgoController:
             finally:
                 self._close_inflight = False
 
-    async def _place_order(self, *, txn: Txn, security_id: str, qty: int, tag: str) -> None:
+    async def _place_order(self, *, txn: Txn, security_id: str, qty: int, tag: str) -> PlacedOrder:
         if self._rest is None:
             raise RuntimeError("REST client not ready.")
         if qty <= 0:
-            return
+            return PlacedOrder(ok=True, raw={"status": "success", "data": {"remarks": "qty<=0 skipped"}})
 
         cfg = self._cfg_store.current()
         order_type = cfg.order_type
@@ -363,6 +438,7 @@ class SemiAlgoController:
         if not placed.ok:
             self._last_error = f"order failed tag={tag} secid={security_id} qty={qty} resp={placed.raw}"
             raise RuntimeError(self._last_error)
+        return placed
 
     async def _market_loop(self) -> None:
         assert self._feed is not None
@@ -411,14 +487,25 @@ class SemiAlgoController:
 
     def _update_trailing_and_maybe_exit(self, pos: _Position, ltp: float) -> None:
         cfg: EngineConfig = self._cfg_store.current()
-        tsl_pct = float(cfg.trailing_stop_pct) / 100.0
+        cost_sl_enabled = bool(getattr(cfg, "cost_sl_enabled", False))
+        cost_sl_rr = float(getattr(cfg, "cost_sl_rr", 1.0) or 0.0)
+        # Trailing SL feature removed; keep field for compatibility but ensure it is always unset.
+        pos.trailing_stop_price = None
+
+        if cost_sl_enabled and not pos.cost_sl_applied:
+            risk = float(getattr(pos, "risk_points", 0.0) or 0.0)
+            if risk > 0.0 and cost_sl_rr >= 0.0:
+                if pos.side == "BUY":
+                    reward = float(ltp) - float(pos.entry_price)
+                else:
+                    reward = float(pos.entry_price) - float(ltp)
+                if reward > 0.0 and (reward / risk) >= cost_sl_rr:
+                    pos.stop_loss_price = max(0.05, float(pos.entry_price))
+                    pos.trailing_stop_price = None
+                    pos.cost_sl_applied = True
 
         if pos.side == "BUY":
-            pos.peak_price = max(float(pos.peak_price or pos.entry_price), float(ltp))
-            if tsl_pct > 0.0:
-                cand = max(0.05, float(pos.peak_price) * (1.0 - tsl_pct))
-                pos.trailing_stop_price = max(float(pos.trailing_stop_price or pos.stop_loss_price), cand)
-            stop = max(float(pos.stop_loss_price), float(pos.trailing_stop_price or pos.stop_loss_price))
+            stop = float(pos.stop_loss_price)
             if ltp <= stop and not self._close_inflight:
                 self._close_inflight = True
                 asyncio.create_task(self._close_position(reason="STOP"), name="semi_algo_auto_close_stop")
@@ -428,12 +515,7 @@ class SemiAlgoController:
                 asyncio.create_task(self._close_position(reason="TARGET"), name="semi_algo_auto_close_target")
                 return
         else:
-            pos.trough_price = min(float(pos.trough_price or pos.entry_price), float(ltp))
-            if tsl_pct > 0.0:
-                cand = max(0.05, float(pos.trough_price) * (1.0 + tsl_pct))
-                # For a short premium position, the stop should trail down (decrease), never loosen.
-                pos.trailing_stop_price = min(float(pos.trailing_stop_price or pos.stop_loss_price), cand)
-            stop = min(float(pos.stop_loss_price), float(pos.trailing_stop_price or pos.stop_loss_price))
+            stop = float(pos.stop_loss_price)
             if ltp >= stop and not self._close_inflight:
                 self._close_inflight = True
                 asyncio.create_task(self._close_position(reason="STOP"), name="semi_algo_auto_close_stop")

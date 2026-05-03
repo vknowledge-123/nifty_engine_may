@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Nifty Semi Algo Trader</title>
+    <title>Nifty Options Ladder Engine</title>
     <style>
       :root{
         --bg: #0b0d12;
@@ -45,9 +45,26 @@
         padding: 14px;
         box-shadow: var(--shadow);
       }
-      .card-settings{ grid-column: span 4; }
-      .card-dashboard{ grid-column: span 8; }
+      .card-dashboard{ grid-column: span 12; }
       .card-position{ grid-column: span 12; }
+
+      /* Trading UX: fixed trade bar (no scroll collisions) */
+      .tradebar{
+        position: fixed;
+        top: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: min(1320px, calc(100vw - 36px));
+        z-index: 200;
+        padding: 10px 12px;
+        background: rgba(11,13,18,0.98);
+        backdrop-filter: blur(10px);
+      }
+      .tradebar label{ margin-top: 6px; font-size: 11px; }
+      .tradebar input, .tradebar select{ padding: 7px 8px; border-radius: 10px; font-size: 12px; }
+      .tradebar .actions{ margin-top: 8px; }
+      .tradebar .row4{ gap: 8px; }
+      .tradebar-spacer{ height: var(--tradebar-h, 210px); }
       .card h3{ margin: 0 0 10px; font-size: 14px; letter-spacing: 0.2px; color: rgba(255,255,255,0.88); }
       label{ display:block; font-size: 12px; color: var(--muted); margin-top: 10px; }
       input, select{
@@ -90,7 +107,7 @@
         background: linear-gradient(90deg, rgba(46,229,157,0.95), rgba(46,229,157,0.55));
         border-color: rgba(46,229,157,0.55);
       }
-      .kvs{ display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+      .kvs{ display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
       .kv{ padding: 10px; border: 1px solid rgba(255,255,255,0.10); border-radius: 14px; background: rgba(0,0,0,0.18); }
       .kv .k{ font-size: 11px; color: var(--muted); }
       .kv .v{ font-size: 16px; margin-top: 6px; font-weight: 650; }
@@ -140,10 +157,37 @@
       .toast .t{ font-size: 12px; color: rgba(255,255,255,0.88); font-weight: 650; }
       .toast .m{ margin-top: 6px; font-size: 12px; color: var(--muted); white-space: pre-wrap; }
 
+      .modal-backdrop{
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.55);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 18px;
+        z-index: 100;
+      }
+      .modal{
+        width: min(980px, 96vw);
+        background: rgba(11,13,18,0.98);
+        border: 1px solid rgba(255,255,255,0.14);
+        border-radius: 16px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.60);
+        padding: 14px 14px;
+      }
+      .modal-head{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap: 12px;
+        padding: 2px 2px 10px;
+      }
+      .modal-title{ font-size: 14px; font-weight: 700; color: rgba(255,255,255,0.9); }
+
       /* Layout tweaks for narrow screens */
       @media (max-width: 1100px){
         header{ flex-direction: column; align-items: flex-start; }
-        .card-settings, .card-dashboard, .card-position{ grid-column: span 12; }
+        .card-dashboard, .card-position{ grid-column: span 12; }
         .kvs{ grid-template-columns: 1fr; }
         .row2, .row3, .row4{ grid-template-columns: 1fr; }
         .tablewrap{ position: relative; }
@@ -161,19 +205,112 @@
 
       /* Keep settings readable when shown alongside the dashboard */
       @media (min-width: 1101px){
-        .card-settings .row3{ grid-template-columns: 1fr 1fr; }
-        .card-settings .row4{ grid-template-columns: 1fr 1fr; }
+        .row2{ grid-template-columns: 1fr 1fr; }
+        .row3{ grid-template-columns: 1fr 1fr 1fr; }
+        .row4{ grid-template-columns: 1fr 1fr 1fr 1fr; }
       }
     </style>
   </head>
   <body>
     <div class="container">
+      <div class="card tradebar" id="tradeBar">
+        <div class="actions" style="margin-top:0; justify-content:space-between; width:100%">
+          <div class="actions" style="margin:0">
+            <button onclick="openSettings()">Settings</button>
+            <button onclick="safe(refreshInstruments)">Refresh instruments</button>
+            <button class="btn-good" onclick="safe(connect)">Connect</button>
+            <button class="btn-danger" onclick="safe(disconnect)">Disconnect</button>
+          </div>
+          <span class="pill" title="Trade settings auto-save on change."><span class="dot good"></span>Auto-save</span>
+        </div>
+
+        <div class="row4">
+          <div>
+            <label>Target (spot)</label>
+            <select id="target_points">
+              <option value="30">30</option>
+              <option value="40">40</option>
+              <option value="50">50</option>
+              <option value="60">60</option>
+              <option value="70">70</option>
+              <option value="80">80</option>
+              <option value="90">90</option>
+              <option value="100">100</option>
+            </select>
+          </div>
+          <div>
+            <label>SL buffer</label>
+            <input id="sl_buffer_points" type="number" min="0" step="0.05" />
+          </div>
+          <div>
+            <label>Lots</label>
+            <input id="lots" type="number" min="1" step="1" />
+          </div>
+          <div>
+            <label>SL rule</label>
+            <div class="pill" style="margin-top:8px">
+              <span class="dot good"></span>
+              <span>Prev 1m candle ± buffer</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="row4">
+          <div>
+            <label>Add on (prem)</label>
+            <input id="add_on_rise_points" type="number" min="0" step="0.05" />
+          </div>
+          <div>
+            <label>Max add</label>
+            <input id="max_add_ons" type="number" min="0" step="1" />
+          </div>
+          <div>
+            <label style="margin:0; display:flex; align-items:center; justify-content:space-between; gap:10px;">
+              <span class="muted">Dynamic SL</span>
+              <input id="dynamic_sl_enabled" type="checkbox" style="width:auto; transform: translateY(1px);" />
+            </label>
+            <input id="dynamic_sl_spot" type="number" step="0.05" placeholder="Spot level" />
+          </div>
+          <div>
+            <label style="margin:0; display:flex; align-items:center; gap:10px;">
+              <input id="trading_enabled" type="checkbox" style="width:auto; transform: translateY(1px);" />
+              <span class="muted">Live arm</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="row4">
+          <div>
+            <label style="margin:0; display:flex; align-items:center; gap:10px;">
+              <input id="full_automation" type="checkbox" style="width:auto; transform: translateY(1px);" />
+              <span class="muted">Auto flip</span>
+            </label>
+          </div>
+          <div>
+            <label style="margin:0; display:flex; align-items:center; gap:10px;">
+              <input id="ghost_monitoring" type="checkbox" style="width:auto; transform: translateY(1px);" />
+              <span class="muted">Ghost</span>
+            </label>
+          </div>
+          <div>
+            <label style="margin:0; display:flex; align-items:center; gap:10px;">
+              <input id="last_trade" type="checkbox" style="width:auto; transform: translateY(1px);" />
+              <span class="muted">Last trade</span>
+            </label>
+          </div>
+          <div></div>
+        </div>
+
+        <div class="mini" id="settingsHint"></div>
+      </div>
+      <div class="tradebar-spacer" id="tradeBarSpacer"></div>
+
       <header>
         <div>
           <h1>Nifty Semi Algo Trader</h1>
           <div class="subtitle">
-            Pick a CE/PE strike from the dashboard (±10 strikes). Entry is manual (BUY/SELL),
-            exits are automatic via SL/Target/TSL based on option premium (%).
+            Click BUY/SELL on any CE/PE strike to start an option BUY engine / SELL engine.
+            Exits (SL/Target) are based on NIFTY spot; pyramiding is based on premium moves.
           </div>
         </div>
         <div class="actions" style="margin:0">
@@ -183,104 +320,24 @@
       </header>
 
       <div class="grid">
-        <div class="card card-settings">
-          <h3>Settings</h3>
-
-          <div class="row2">
-            <div>
-              <label>Client ID</label>
-              <input id="client_id" placeholder="Dhan client id" />
-            </div>
-            <div>
-              <label>Access token</label>
-              <input id="access_token" placeholder="Dhan access token" />
-            </div>
-          </div>
-
-          <div class="actions">
-            <label style="margin:0; display:flex; align-items:center; gap:10px;">
-              <input id="trading_enabled" type="checkbox" style="width:auto; transform: translateY(1px);" />
-              <span class="muted">Trading enabled</span>
-            </label>
-          </div>
-
-          <div class="row3">
-            <div>
-              <label>Contract</label>
-              <select id="weekly_expiry">
-                <option value="CURRENT">Current week</option>
-                <option value="NEXT">Next week</option>
-              </select>
-            </div>
-            <div>
-              <label>Strike step</label>
-              <input id="strike_step" type="number" min="1" step="1" />
-            </div>
-            <div>
-              <label>Chain strikes each side</label>
-              <input id="chain_strikes_each_side" type="number" min="1" max="25" step="1" />
-            </div>
-          </div>
-
-          <div class="row3">
-            <div>
-              <label>Stop loss (% of premium)</label>
-              <input id="stop_loss_pct" type="number" min="0" step="0.1" />
-            </div>
-            <div>
-              <label>Target (% of premium)</label>
-              <input id="target_pct" type="number" min="0" step="0.1" />
-            </div>
-            <div>
-              <label>Trailing SL (% of premium)</label>
-              <input id="trailing_stop_pct" type="number" min="0" step="0.1" />
-            </div>
-          </div>
-
-          <div class="row4">
-            <div>
-              <label>Lots</label>
-              <input id="lots" type="number" min="1" step="1" />
-            </div>
-            <div>
-              <label>Order type</label>
-              <select id="order_type">
-                <option value="MARKET">MARKET</option>
-                <option value="LIMIT">LIMIT</option>
-              </select>
-            </div>
-            <div>
-              <label>Limit price offset</label>
-              <input id="limit_price_offset" type="number" step="0.05" />
-            </div>
-            <div>
-              <label>Nifty spot security id</label>
-              <input id="nifty_spot_security_id" />
-            </div>
-          </div>
-
-          <div class="actions">
-            <button class="btn-primary" onclick="safe(saveConfig)">Save settings</button>
-            <button onclick="safe(refreshInstruments)">Refresh instruments</button>
-            <button class="btn-good" onclick="safe(connect)">Connect</button>
-            <button class="btn-danger" onclick="safe(disconnect)">Disconnect</button>
-          </div>
-
-          <div class="mini" id="settingsHint"></div>
-        </div>
-
         <div class="card card-dashboard">
           <h3>Dashboard</h3>
           <div class="kvs">
             <div class="kv">
               <div class="k">NIFTY spot</div>
               <div class="v mono" id="spotLtp">-</div>
+              <div class="mini muted" id="spotTs">Updated: -</div>
               <div class="mini muted" id="atmStrike">ATM: -</div>
             </div>
             <div class="kv">
-              <div class="k">Instrument master</div>
-              <div class="v" id="instrLoaded">-</div>
-              <div class="mini muted" id="contractInfo">Contract: -</div>
+              <div class="k">Latest 1m candle</div>
+              <div class="v mono" id="candleOhlc">-</div>
+              <div class="mini muted" id="candleMeta">-</div>
+            </div>
+            <div class="kv">
+              <div class="k">Broker MTM (10s)</div>
+              <div class="v mono" id="brokerMtm">-</div>
+              <div class="mini muted" id="brokerMtmTs">Updated: -</div>
             </div>
           </div>
 
@@ -302,44 +359,78 @@
               <tbody id="chainBody"></tbody>
             </table>
           </div>
-          <div class="mini muted">Tip: BUY/SELL buttons place orders using your configured Lots (no pyramiding).</div>
+          <div class="mini muted">BUY/SELL starts the ladder engine (pyramiding + spot-based exits).</div>
         </div>
 
         <div class="card card-position">
-          <h3>Active Position</h3>
+          <h3>Active Ladder</h3>
           <div class="actions">
-            <button class="btn-danger" id="btnSquareOff" onclick="safe(squareOff)" disabled>Square off</button>
+            <button class="btn-danger" id="btnStop" onclick="safe(stopButton)" disabled>Stop</button>
+            <span class="pill"><span class="dot good"></span><span id="netPnlText">Net P&amp;L: -</span></span>
           </div>
           <div class="tablewrap">
             <table>
               <thead>
                 <tr>
-                  <th>Side</th>
+                  <th>Engine</th>
+                  <th>Leg</th>
                   <th>Symbol</th>
-                  <th>Entry</th>
-                  <th>SL</th>
-                  <th>TSL</th>
-                  <th>Target</th>
-                  <th>LTP</th>
-                  <th>P&amp;L</th>
+                  <th>Avg premium</th>
+                  <th>Last premium</th>
+                  <th>Adds</th>
+                  <th>Next add</th>
+                  <th>Spot entry</th>
+                  <th>SL mode</th>
+                  <th>SL ref</th>
+                  <th>Spot SL</th>
+                  <th>Spot target</th>
+                  <th>P&amp;L (est)</th>
                   <th>Entry time</th>
-                  <th>Exit reason</th>
+                  <th>Exit</th>
                 </tr>
               </thead>
               <tbody>
                 <tr id="posRow">
                   <td id="posSide">-</td>
+                  <td id="posLeg">-</td>
                   <td class="mono" id="posSym">-</td>
                   <td class="mono" id="posEntry">-</td>
-                  <td class="mono" id="posSl">-</td>
-                  <td class="mono" id="posTsl">-</td>
-                  <td class="mono" id="posTgt">-</td>
                   <td class="mono" id="posLtp">-</td>
+                  <td class="mono" id="posAdds">-</td>
+                  <td class="mono" id="posNextAdd">-</td>
+                  <td class="mono" id="posSpotEntry">-</td>
+                  <td id="posSlMode">-</td>
+                  <td class="mono" id="posSlRef">-</td>
+                  <td class="mono" id="posSl">-</td>
+                  <td class="mono" id="posTgt">-</td>
                   <td class="mono" id="posPnl">-</td>
                   <td class="mono" id="posTs">-</td>
                   <td id="posReason">-</td>
                 </tr>
               </tbody>
+            </table>
+          </div>
+          <div class="mini muted" id="tradeLog"></div>
+
+          <h3 style="margin-top:12px">Closed Ladders</h3>
+          <div class="tablewrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Exit time</th>
+                  <th>Reason</th>
+                  <th>Leg</th>
+                  <th>Qty</th>
+                  <th>Entry spot</th>
+                  <th>Exit spot</th>
+                  <th>SL ref</th>
+                  <th>SL</th>
+                  <th>Target</th>
+                  <th>P&amp;L</th>
+                  <th>Fills (spot/prem)</th>
+                </tr>
+              </thead>
+              <tbody id="closedBody"></tbody>
             </table>
           </div>
         </div>
@@ -348,6 +439,75 @@
       <div id="statusbar">
         <div id="statusText">Ready.</div>
         <div class="mini muted" id="errText"></div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="settingsModal" onclick="onBackdrop(event)">
+      <div class="modal" role="dialog" aria-modal="true" onclick="event.stopPropagation()">
+        <div class="modal-head">
+          <div class="modal-title">Settings</div>
+          <div class="actions" style="margin:0">
+            <button onclick="closeSettings()">Close</button>
+            <button class="btn-primary" onclick="safe(saveSettings)">Save</button>
+          </div>
+        </div>
+
+        <div class="row2">
+          <div>
+            <label>Client ID</label>
+            <input id="client_id" placeholder="Dhan client id" />
+          </div>
+          <div>
+            <label>Access token</label>
+            <input id="access_token" placeholder="Dhan access token" />
+          </div>
+        </div>
+
+        <div class="row4">
+          <div>
+            <label>Execution mode</label>
+            <select id="execution_mode">
+              <option value="SIMULATION">Simulation</option>
+              <option value="LIVE">Live</option>
+            </select>
+          </div>
+          <div>
+            <label>Contract</label>
+            <select id="weekly_expiry">
+              <option value="CURRENT">Current week</option>
+              <option value="NEXT">Next week</option>
+            </select>
+          </div>
+          <div>
+            <label>Strike step</label>
+            <input id="strike_step" type="number" min="1" step="1" />
+          </div>
+          <div>
+            <label>Chain strikes</label>
+            <input id="chain_strikes_each_side" type="number" min="1" max="25" step="1" />
+          </div>
+        </div>
+
+        <div class="row4">
+          <div>
+            <label>Order type</label>
+            <select id="order_type">
+              <option value="MARKET">MARKET</option>
+              <option value="LIMIT">LIMIT</option>
+            </select>
+          </div>
+          <div>
+            <label>Limit offset</label>
+            <input id="limit_price_offset" type="number" step="0.05" />
+          </div>
+          <div>
+            <label>Nifty spot id</label>
+            <input id="nifty_spot_security_id" />
+          </div>
+          <div></div>
+        </div>
+
+        <div class="mini muted">Note: these settings save only when you click Save.</div>
       </div>
     </div>
 
@@ -366,6 +526,13 @@
         return x.toFixed(2);
       }
 
+      function fmtTime(iso) {
+        if (!iso) return "-";
+        const d = new Date(iso);
+        if (!Number.isFinite(d.getTime())) return String(iso);
+        return d.toLocaleTimeString();
+      }
+
       function toast(title, msg) {
         $("toastT").textContent = String(title || "");
         $("toastM").textContent = String(msg || "");
@@ -377,6 +544,7 @@
 
       async function api(path, opts={}) {
         const res = await fetch(`/api${path}`, {
+          cache: "no-store",
           headers: { "Content-Type": "application/json" },
           ...opts,
         });
@@ -402,21 +570,37 @@
       function setConnUI(running, tradingEnabled) {
         $("pillConn").textContent = running ? "Connected" : "Disconnected";
         $("dotConn").className = `dot ${running ? "good" : "bad"}`;
-        $("pillTrade").textContent = tradingEnabled ? "Trading enabled" : "Trading disabled";
+        $("pillTrade").textContent = tradingEnabled ? "Live armed" : "Not armed";
         $("dotTrade").className = `dot ${tradingEnabled ? "good" : ""}`;
+      }
+
+      function updateTradebarHeight() {
+        const bar = $("tradeBar");
+        if (!bar) return;
+        const h = Math.ceil(bar.getBoundingClientRect().height);
+        document.documentElement.style.setProperty("--tradebar-h", `${Math.max(60, h + 10)}px`);
       }
 
       async function loadConfig() {
         const cfg = await api("/config");
+        const allowedTargets = [30,40,50,60,70,80,90,100];
         $("client_id").value = cfg.client_id || "";
         $("access_token").value = cfg.access_token || "";
         $("trading_enabled").checked = !!cfg.trading_enabled;
+        $("execution_mode").value = cfg.execution_mode || "SIMULATION";
         $("weekly_expiry").value = cfg.weekly_expiry || "CURRENT";
         $("strike_step").value = String(cfg.strike_step ?? 50);
         $("chain_strikes_each_side").value = String(cfg.chain_strikes_each_side ?? 10);
-        $("stop_loss_pct").value = String(cfg.stop_loss_pct ?? 20);
-        $("target_pct").value = String(cfg.target_pct ?? 30);
-        $("trailing_stop_pct").value = String(cfg.trailing_stop_pct ?? 0);
+        $("sl_buffer_points").value = String(cfg.sl_buffer_points ?? 2);
+        const tgt = Number(cfg.target_points ?? 30);
+        $("target_points").value = String(allowedTargets.includes(tgt) ? tgt : 30);
+        $("dynamic_sl_enabled").checked = !!cfg.dynamic_sl_enabled;
+        $("dynamic_sl_spot").value = (cfg.dynamic_sl_spot === null || cfg.dynamic_sl_spot === undefined) ? "" : String(cfg.dynamic_sl_spot);
+        $("add_on_rise_points").value = String(cfg.add_on_rise_points ?? 5);
+        $("max_add_ons").value = String(cfg.max_add_ons ?? 2);
+        $("full_automation").checked = !!cfg.full_automation;
+        $("ghost_monitoring").checked = !!cfg.ghost_monitoring;
+        $("last_trade").checked = !!cfg.last_trade;
         $("lots").value = String(cfg.lots ?? 1);
         $("order_type").value = cfg.order_type || "MARKET";
         $("limit_price_offset").value = String(cfg.limit_price_offset ?? 0);
@@ -428,12 +612,19 @@
           client_id: $("client_id").value.trim() || null,
           access_token: $("access_token").value.trim() || null,
           trading_enabled: !!$("trading_enabled").checked,
+          execution_mode: $("execution_mode").value,
+          full_automation: !!$("full_automation").checked,
+          ghost_monitoring: !!$("ghost_monitoring").checked,
+          last_trade: !!$("last_trade").checked,
+          dynamic_sl_enabled: !!$("dynamic_sl_enabled").checked,
+          dynamic_sl_spot: $("dynamic_sl_spot").value === "" ? null : Number($("dynamic_sl_spot").value),
           weekly_expiry: $("weekly_expiry").value,
           strike_step: Number($("strike_step").value || 50),
           chain_strikes_each_side: Number($("chain_strikes_each_side").value || 10),
-          stop_loss_pct: Number($("stop_loss_pct").value || 0),
-          target_pct: Number($("target_pct").value || 0),
-          trailing_stop_pct: Number($("trailing_stop_pct").value || 0),
+          sl_buffer_points: Number($("sl_buffer_points").value || 0),
+          target_points: Number($("target_points").value || 0),
+          add_on_rise_points: Number($("add_on_rise_points").value || 0),
+          max_add_ons: Number($("max_add_ons").value || 0),
           lots: Number($("lots").value || 1),
           order_type: $("order_type").value,
           limit_price_offset: Number($("limit_price_offset").value || 0),
@@ -442,6 +633,85 @@
         await api("/config", { method:"PUT", body: JSON.stringify(body) });
         toast("Saved", "Settings saved");
         $("settingsHint").textContent = "Saved.";
+      }
+
+      let __autoInit = true;
+      let __patchTimer = null;
+      let __pendingPatch = {};
+
+      function queuePatch(patch) {
+        if (__autoInit) return;
+        Object.assign(__pendingPatch, patch || {});
+        if (__patchTimer) clearTimeout(__patchTimer);
+        __patchTimer = setTimeout(flushPatch, 250);
+      }
+
+      async function flushPatch() {
+        __patchTimer = null;
+        const patch = __pendingPatch;
+        __pendingPatch = {};
+        if (!patch || Object.keys(patch).length === 0) return;
+        try {
+          await api("/config", { method:"PATCH", body: JSON.stringify(patch) });
+          $("settingsHint").textContent = `Auto-saved @ ${new Date().toLocaleTimeString()}`;
+        } catch (e) {
+          $("statusText").textContent = `ERROR: ${e.message || e}`;
+          toast("Error", e.message || String(e));
+        }
+      }
+
+      function setupAutoSave() {
+        const n = (id) => {
+          const s = String($(id).value || "").trim();
+          if (!s) return null;
+          const x = Number(s);
+          return Number.isFinite(x) ? x : null;
+        };
+
+        $("trading_enabled").addEventListener("change", () => queuePatch({ trading_enabled: !!$("trading_enabled").checked }));
+        $("sl_buffer_points").addEventListener("input", () => queuePatch({ sl_buffer_points: Number($("sl_buffer_points").value || 0) }));
+        $("target_points").addEventListener("change", () => queuePatch({ target_points: Number($("target_points").value || 0) }));
+        $("add_on_rise_points").addEventListener("input", () => queuePatch({ add_on_rise_points: Number($("add_on_rise_points").value || 0) }));
+        $("max_add_ons").addEventListener("input", () => queuePatch({ max_add_ons: Number($("max_add_ons").value || 0) }));
+        $("full_automation").addEventListener("change", () => queuePatch({ full_automation: !!$("full_automation").checked }));
+        $("ghost_monitoring").addEventListener("change", () => queuePatch({ ghost_monitoring: !!$("ghost_monitoring").checked }));
+        $("last_trade").addEventListener("change", () => queuePatch({ last_trade: !!$("last_trade").checked }));
+        $("lots").addEventListener("input", () => queuePatch({ lots: Number($("lots").value || 1) }));
+
+        $("dynamic_sl_enabled").addEventListener("change", () => queuePatch({ dynamic_sl_enabled: !!$("dynamic_sl_enabled").checked }));
+        $("dynamic_sl_spot").addEventListener("input", () => queuePatch({ dynamic_sl_spot: n("dynamic_sl_spot") }));
+      }
+
+      function openSettings() {
+        const m = $("settingsModal");
+        m.style.display = "flex";
+        $("client_id").focus();
+      }
+
+      function closeSettings() {
+        $("settingsModal").style.display = "none";
+      }
+
+      function onBackdrop(_e) {
+        closeSettings();
+      }
+
+      async function saveSettings() {
+        const patch = {
+          client_id: $("client_id").value.trim() || null,
+          access_token: $("access_token").value.trim() || null,
+          execution_mode: $("execution_mode").value,
+          weekly_expiry: $("weekly_expiry").value,
+          strike_step: Number($("strike_step").value || 50),
+          chain_strikes_each_side: Number($("chain_strikes_each_side").value || 10),
+          order_type: $("order_type").value,
+          limit_price_offset: Number($("limit_price_offset").value || 0),
+          nifty_spot_security_id: $("nifty_spot_security_id").value.trim() || "13",
+        };
+        await api("/config", { method: "PATCH", body: JSON.stringify(patch) });
+        $("settingsHint").textContent = `Saved @ ${new Date().toLocaleTimeString()}`;
+        toast("Saved", "Settings saved");
+        closeSettings();
       }
 
       async function refreshInstruments() {
@@ -464,12 +734,12 @@
           method: "POST",
           body: JSON.stringify({ strike, option_type: optionType, side }),
         });
-        toast("Order sent", `${side} ${optionType} ${strike}`);
+        toast("Ladder started", `${side} ${optionType} ${strike}`);
       }
 
-      async function squareOff() {
-        await api("/trade/squareoff", { method:"POST" });
-        toast("Square off", "Square off requested");
+      async function stopButton() {
+        await api("/engine/stop_button", { method:"POST" });
+        toast("Stopped", "Square-off + engine stop requested");
       }
 
       let currentStrikes = [];
@@ -524,35 +794,71 @@
         }
       }
 
-      function renderPosition(pos) {
-        const has = !!pos;
-        $("btnSquareOff").disabled = !has;
+      function renderPosition(lad) {
+        const has = !!lad;
+        $("btnStop").disabled = !has;
         if (!has) {
           $("posSide").textContent = "-";
+          $("posLeg").textContent = "-";
           $("posSym").textContent = "-";
           $("posEntry").textContent = "-";
           $("posSl").textContent = "-";
-          $("posTsl").textContent = "-";
           $("posTgt").textContent = "-";
           $("posLtp").textContent = "-";
+          $("posAdds").textContent = "-";
+          $("posNextAdd").textContent = "-";
+          $("posSpotEntry").textContent = "-";
+          $("posSlMode").textContent = "-";
+          $("posSlRef").textContent = "-";
           $("posPnl").textContent = "-";
           $("posPnl").className = "mono";
           $("posTs").textContent = "-";
           $("posReason").textContent = "-";
+          $("tradeLog").textContent = "";
           return;
         }
-        $("posSide").textContent = pos.side;
-        $("posSym").textContent = pos.symbol;
-        $("posEntry").textContent = fmt(pos.entry_price);
-        $("posSl").textContent = fmt(pos.stop_loss_price);
-        $("posTsl").textContent = fmt(pos.trailing_stop_price);
-        $("posTgt").textContent = fmt(pos.target_price);
-        $("posLtp").textContent = fmt(pos.last_ltp);
-        const pnl = (pos.pnl === null || pos.pnl === undefined) ? null : Number(pos.pnl);
+        $("posSide").textContent = lad.engine_side;
+        $("posLeg").textContent = `${lad.option_type}${lad.is_ghost ? " (ghost)" : ""}`;
+        $("posSym").textContent = lad.symbol;
+        $("posEntry").textContent = fmt(lad.entry_premium_avg);
+        $("posLtp").textContent = fmt(lad.last_premium);
+        $("posAdds").textContent = `${lad.adds_done}/${lad.max_add_ons}`;
+        $("posNextAdd").textContent = fmt(lad.next_add_price);
+        $("posSpotEntry").textContent = fmt(lad.entry_spot);
+        $("posSlMode").textContent = lad.stop_mode || "-";
+        $("posSlRef").textContent = fmt(lad.stop_ref_spot);
+        $("posSl").textContent = fmt(lad.stop_spot);
+        $("posTgt").textContent = fmt(lad.target_spot);
+        const pnl = (lad.pnl_estimated === null || lad.pnl_estimated === undefined) ? null : Number(lad.pnl_estimated);
         $("posPnl").textContent = pnl === null ? "-" : pnl.toFixed(2);
         $("posPnl").className = `mono ${pnl === null ? "" : (pnl >= 0 ? "good" : "bad")}`;
-        $("posTs").textContent = pos.entry_ts || "-";
-        $("posReason").textContent = pos.exit_reason || "-";
+        $("posTs").textContent = lad.entry_ts || "-";
+        $("posReason").textContent = lad.exit_reason || "-";
+      }
+
+      function renderClosed(closed) {
+        const body = $("closedBody");
+        body.innerHTML = "";
+        const rows = (closed || []).slice(0, 20);
+        for (const it of rows) {
+          const tr = document.createElement("tr");
+          const fills = (it.fills || []).map(f => `${fmt(f.spot)}/${fmt(f.premium)} x${f.qty}`).join(" | ");
+          const pnl = Number(it.pnl);
+          tr.innerHTML = `
+            <td class="mono">${it.exit_ts || "-"}</td>
+            <td>${it.reason || "-"}</td>
+            <td class="mono">${it.engine_side || "-"} ${it.option_type || "-"} ${it.strike || "-"}</td>
+            <td class="mono">${it.qty ?? "-"}</td>
+            <td class="mono">${fmt(it.entry_spot)}</td>
+            <td class="mono">${fmt(it.exit_spot)}</td>
+            <td class="mono">${fmt(it.stop_ref_spot)}</td>
+            <td class="mono">${fmt(it.stop_spot)}</td>
+            <td class="mono">${fmt(it.target_spot)}</td>
+            <td class="mono ${Number.isFinite(pnl) ? (pnl >= 0 ? "good" : "bad") : ""}">${Number.isFinite(pnl) ? pnl.toFixed(2) : "-"}</td>
+            <td class="mini">${fills || "-"}</td>
+          `;
+          body.appendChild(tr);
+        }
       }
 
       async function pollDashboard() {
@@ -561,22 +867,56 @@
         setConnUI(!!st.running, !!st.trading_enabled);
 
         $("spotLtp").textContent = fmt(st.spot_ltp);
+        const spotMeta = st.spot_updated_at ? `Updated: ${fmtTime(st.spot_updated_at)}${st.spot_source ? (" ("+st.spot_source+")") : ""}` : "Updated: -";
+        $("spotTs").textContent = spotMeta;
         $("atmStrike").textContent = `ATM: ${snap.atm_strike ?? "-"}`;
-        $("instrLoaded").textContent = st.instruments_loaded ? "Loaded" : "Not loaded";
-        $("contractInfo").textContent = `Contract: ${(st.weekly_expiry || "-")}`;
+
+        const c = snap.latest_1m_candle || null;
+        if (c) {
+          $("candleOhlc").textContent = `O ${fmt(c.open)}  H ${fmt(c.high)}  L ${fmt(c.low)}  C ${fmt(c.close)}`;
+          const fetched = snap.last_candle_fetch_ts ? ` | Fetched: ${fmtTime(snap.last_candle_fetch_ts)}` : "";
+          const comp = (c.completed === false) ? " (forming)" : "";
+          $("candleMeta").textContent = `Candle: ${fmtTime(c.ts)}${comp}${fetched}`;
+        } else {
+          $("candleOhlc").textContent = "-";
+          $("candleMeta").textContent = "-";
+        }
+        $("brokerMtm").textContent = fmt(st.broker_mtm);
+        $("brokerMtmTs").textContent = `Updated: ${snap.last_mtm_ts || "-"}`;
+        const netReal = (snap.net_pnl_real !== undefined && snap.net_pnl_real !== null) ? Number(snap.net_pnl_real) : null;
+        const netTot = (snap.net_pnl_total !== undefined && snap.net_pnl_total !== null) ? Number(snap.net_pnl_total) : null;
+        const a = (netReal === null || !Number.isFinite(netReal)) ? "-" : netReal.toFixed(2);
+        const b = (netTot === null || !Number.isFinite(netTot)) ? "-" : netTot.toFixed(2);
+        $("netPnlText").textContent = `Net P&L (real/total): ${a} / ${b}`;
 
         renderChain(snap.chain || [], snap.atm_strike);
-        renderPosition(st.active_position || null);
+        renderPosition(st.active_ladder || null);
+        renderClosed(snap.closed_ladders || []);
 
-        const err = (st.last_error || st.feed_error) ? `Error: ${(st.last_error || st.feed_error)}` : "";
-        $("errText").textContent = err;
+        const log = (snap.trade_log || []).slice(-12).reverse().map(e => `${e.ts} ${e.event}${e.reason ? ("("+e.reason+")") : ""}`);
+        $("tradeLog").textContent = log.length ? ("Recent: " + log.join(" | ")) : "";
+
+        const msgs = [];
+        if (!st.instruments_loaded) msgs.push("Instrument master not loaded (click Refresh instruments).");
+        if (st.running && (st.spot_ltp === null || st.spot_ltp === undefined)) msgs.push("Waiting for NIFTY spot ticks...");
+        if (st.running && st.spot_source === "CANDLE") msgs.push("Waiting for live NIFTY spot websocket/REST ticks...");
+        if (st.last_error || st.feed_error) msgs.push(`Error: ${(st.last_error || st.feed_error)}`);
+        $("errText").textContent = msgs.join(" ");
         $("statusText").textContent = st.running ? "Live updates on." : "Not connected.";
       }
 
       // Initial load
       safe(async () => {
+        __autoInit = true;
         await loadConfig();
+        setupAutoSave();
+        __autoInit = false;
+        updateTradebarHeight();
         await pollDashboard();
+      });
+
+      window.addEventListener("resize", () => {
+        updateTradebarHeight();
       });
 
       // Smooth dashboard refresh.
@@ -585,7 +925,7 @@
         if (inFlight) return;
         inFlight = true;
         safe(pollDashboard).finally(() => { inFlight = false; });
-      }, 800);
+      }, 300);
     </script>
   </body>
 </html>

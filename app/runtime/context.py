@@ -4,7 +4,7 @@ import asyncio
 
 from app.runtime.instruments import InstrumentStore
 from app.runtime.settings import EngineConfigStore
-from app.services.engine.semi_algo import SemiAlgoController
+from app.services.engine.ladder import LadderEngineController
 
 
 class AppContext:
@@ -12,7 +12,7 @@ class AppContext:
         self._lock = asyncio.Lock()
         self.config_store = EngineConfigStore()
         self.instruments = InstrumentStore()
-        self.engine = SemiAlgoController(self.config_store, self.instruments)
+        self.engine = LadderEngineController(self.config_store, self.instruments)
 
     async def startup(self) -> None:
         await self.instruments.load_from_disk_if_present()

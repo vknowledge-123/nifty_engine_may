@@ -32,6 +32,18 @@ async def patch_config(request: Request, patch: dict[str, Any]) -> EngineConfig:
     store = request.app.state.ctx.config_store
     base = await store.get()
     merged = base.model_dump()
+    # Back-compat: allow older clients to PATCH using the previous *_pct keys.
+    if "stop_loss_pct" in patch and "stop_loss_points" not in patch:
+        patch["stop_loss_points"] = patch.pop("stop_loss_pct")
+    else:
+        patch.pop("stop_loss_pct", None)
+    if "target_pct" in patch and "target_points" not in patch:
+        patch["target_points"] = patch.pop("target_pct")
+    else:
+        patch.pop("target_pct", None)
+    # trailing_stop_* keys are ignored (feature removed), keep request backward-compatible.
+    patch.pop("trailing_stop_pct", None)
+    patch.pop("trailing_stop_points", None)
     merged.update(patch)
     try:
         new_cfg = EngineConfig.model_validate(merged)
@@ -60,6 +72,16 @@ async def stop_engine(request: Request) -> EngineStatus:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
+@router.post("/engine/stop_button", response_model=EngineStatus)
+async def stop_button(request: Request) -> EngineStatus:
+    ctx = request.app.state.ctx
+    try:
+        await ctx.engine.stop_button()
+        return await ctx.engine.status()
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
 @router.get("/engine/status", response_model=EngineStatus)
 async def engine_status(request: Request) -> EngineStatus:
     return await request.app.state.ctx.engine.status()
@@ -79,7 +101,10 @@ async def trade_open(request: Request, body: OpenTradeRequest) -> EngineStatus:
             raise RuntimeError("option_type must be CE or PE")
         if side not in ("BUY", "SELL"):
             raise RuntimeError("side must be BUY or SELL")
-        return await ctx.engine.open_position(strike=int(body.strike), option_type=opt, side=side)  # type: ignore[arg-type]
+        st = await ctx.engine.open_position(strike=int(body.strike), option_type=opt, side=side)  # type: ignore[arg-type]
+        if st is None:
+            raise HTTPException(status_code=500, detail="Engine returned no status for trade/open")
+        return st
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 

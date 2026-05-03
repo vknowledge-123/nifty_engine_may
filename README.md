@@ -4,7 +4,8 @@ FastAPI web app for **manual entry + automatic exit** NIFTY weekly options tradi
 
 ## What’s included
 - Web dashboard to set `client_id`, `access_token`, order lots, and risk params (SL/Target/TSL as % of option premium)
-- Dhan MarketFeed WebSocket subscription to **NIFTY spot** (used only to center the strike chain)
+- Dhan MarketFeed WebSocket subscription to **NIFTY spot** (live spot updates on dashboard + strike centering)
+- Dashboard shows latest fetched **1-minute candle OHLC** for NIFTY spot
 - Dashboard shows **±10 strikes** (CE/PE) with **BUY/SELL** buttons
 - Position monitoring on option LTP with **auto square-off** on SL/Target/TSL
 - Instrument master downloader + weekly option selector from Dhan scrip-master CSV
